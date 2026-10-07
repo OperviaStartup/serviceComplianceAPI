@@ -5,6 +5,8 @@ import com.api.servicecompliance.executions.domain.repository.ExecutionRepositor
 import com.api.servicecompliance.obligations.domain.repository.ObligationRepository;
 import com.api.servicecompliance.shared.domain.DomainException;
 import org.springframework.stereotype.Service;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 @Service public class ExecutionService {
     private final ExecutionRepository repository;
@@ -16,5 +18,7 @@ import org.springframework.stereotype.Service;
         return repository.save(new Execution(request.obligationId(),operatorId,request.result(),request.notes()));
     }
     public Execution find(Long id){return repository.findById(id).orElseThrow(()->new IllegalArgumentException("Ejecución no encontrada"));}
-    public record RegisterExecution(Long obligationId,com.api.servicecompliance.executions.domain.model.ExecutionResult result,String notes){}
+    public record RegisterExecution(@NotNull Long obligationId,
+                                    @NotNull com.api.servicecompliance.executions.domain.model.ExecutionResult result,
+                                    @Size(max=2000) String notes){}
 }

@@ -6,6 +6,9 @@ import com.api.servicecompliance.executions.domain.repository.ExecutionRepositor
 import com.api.servicecompliance.shared.domain.DomainException;
 import org.springframework.stereotype.Service;
 import java.util.List;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 @Service public class EvidenceService {
     private final EvidenceRepository evidenceRepository; private final ExecutionRepository executionRepository;
@@ -16,5 +19,7 @@ import java.util.List;
         return evidenceRepository.save(new Evidence(executionId,request.type(),request.url(),request.description()));
     }
     public List<Evidence> findByExecution(Long executionId){return evidenceRepository.findByExecutionId(executionId);}
-    public record EvidenceRequest(com.api.servicecompliance.executions.domain.model.EvidenceType type,String url,String description){}
+    public record EvidenceRequest(@NotNull com.api.servicecompliance.executions.domain.model.EvidenceType type,
+                                  @NotBlank @Size(max=1000) String url,
+                                  @Size(max=1000) String description){}
 }

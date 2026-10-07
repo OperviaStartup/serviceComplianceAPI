@@ -7,6 +7,9 @@ import com.api.servicecompliance.shared.domain.DomainException;
 import com.api.servicecompliance.shared.domain.Role;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 @Service
 public class AuthService {
@@ -24,7 +27,9 @@ public class AuthService {
     }
     public User currentUser(String email){return users.findByEmail(email).orElseThrow(()->new DomainException("Usuario no encontrado"));}
     private AuthResponse response(User user){return new AuthResponse(jwtService.createToken(user),user.getId(),user.getFullName(),user.getEmail(),user.getRole());}
-    public record RegisterRequest(String fullName,String email,String password){}
-    public record LoginRequest(String email,String password){}
+    public record RegisterRequest(@NotBlank @Size(max=255) String fullName,
+                                  @NotBlank @Email @Size(max=255) String email,
+                                  @NotBlank @Size(min=8,max=72) String password){}
+    public record LoginRequest(@NotBlank @Email String email,@NotBlank String password){}
     public record AuthResponse(String token,Long userId,String fullName,String email,Role role){}
 }

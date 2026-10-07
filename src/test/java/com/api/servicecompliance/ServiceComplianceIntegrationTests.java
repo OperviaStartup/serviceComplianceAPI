@@ -44,6 +44,12 @@ class ServiceComplianceIntegrationTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.email").value("operator@test.com"));
     }
 
+    @Test void shouldRejectInvalidRegistrationData() throws Exception {
+        String invalid = "{\"fullName\":\"\",\"email\":\"not-an-email\",\"password\":\"123\"}";
+        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(invalid))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
     @Test void shouldRegisterExecutionOnlyForAssignedOperator() throws Exception {
         User assigned = userRepository.save(new User("Assigned", "assigned@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
         User another = userRepository.save(new User("Another", "another@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
