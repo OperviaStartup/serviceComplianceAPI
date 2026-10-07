@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: service-compliance-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: service-compliance-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: service-compliance-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: service-compliance-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: service-compliance-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: service-compliance-db
+          property: password
+      - key: JWT_SECRET
+        generateValue: true
+      - key: BOOTSTRAP_SUPERVISOR_EMAIL
+        sync: false
+      - key: BOOTSTRAP_SUPERVISOR_PASSWORD
+        sync: false
+
+databases:
+  - name: service-compliance-db
+    databaseName: service_compliance
+    user: service_user
+    plan: free
+    region: oregon
+    postgresMajorVersion: 16
