@@ -63,6 +63,20 @@ class ServiceComplianceIntegrationTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.obligationId").value(obligation.getId()));
     }
 
+    @Test void shouldAllowSupervisorToCreateObligationAndRejectOperator() throws Exception {
+        User supervisor = userRepository.save(new User("Supervisor", "supervisor@test.com", passwordEncoder.encode("Password123!"), Role.SUPERVISOR));
+        User operator = userRepository.save(new User("Operator", "operator2@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
+        String request = "{\"title\":\"Clean warehouse\",\"description\":\"Clean warehouse floor\",\"siteName\":\"Warehouse\",\"assignedOperatorId\":"+operator.getId()+",\"dueAt\":\"2030-01-01T10:00:00Z\"}";
+        mockMvc.perform(post("/api/v1/obligations").header("Authorization","Bearer "+login("operator2@test.com"))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/obligations").header("Authorization","Bearer "+login("supervisor@test.com"))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.assignedOperatorId").value(operator.getId()));
+        mockMvc.perform(get("/api/v1/obligations").header("Authorization","Bearer "+login("operator2@test.com")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].title").value("Clean warehouse"));
+    }
+
     private String login(String email) throws Exception {
         String body = "{\"email\":\""+email+"\",\"password\":\"Password123!\"}";
         String response = mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(body))
