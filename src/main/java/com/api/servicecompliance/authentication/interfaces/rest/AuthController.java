@@ -8,6 +8,9 @@ import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import com.api.servicecompliance.shared.web.ApiError;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -19,11 +22,12 @@ public class AuthController {
     @Operation(summary = "Registrar usuario", description = "Registra un usuario como OPERATOR. El rol SUPERVISOR no se asigna desde este endpoint.")
     @ApiResponse(responseCode = "201", description = "Usuario registrado")
     @ApiResponse(responseCode = "400", description = "Datos inválidos o correo duplicado")
+    @ApiResponse(responseCode = "500", description = "Error interno", content = @Content(schema = @Schema(implementation = ApiError.class)))
     public AuthService.AuthResponse register(@Valid @RequestBody AuthService.RegisterRequest request){return authService.register(request);}
     @PostMapping("/login")
     @Operation(summary = "Iniciar sesión")
     @ApiResponse(responseCode = "200", description = "Token JWT generado")
-    @ApiResponse(responseCode = "400", description = "Credenciales inválidas")
+    @ApiResponse(responseCode = "401", description = "Credenciales inválidas", content = @Content(schema = @Schema(implementation = ApiError.class)))
     public AuthService.AuthResponse login(@Valid @RequestBody AuthService.LoginRequest request){return authService.login(request);}
     @GetMapping("/me")
     @Operation(summary = "Consultar perfil actual")

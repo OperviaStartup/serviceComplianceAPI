@@ -9,6 +9,10 @@ import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import com.api.servicecompliance.shared.web.ApiError;
 import java.security.Principal;
 
 @RestController @RequestMapping("/api/v1/obligations")
@@ -19,8 +23,12 @@ public class ObligationController {
     public ObligationController(ObligationService obligations,AuthService auth){this.obligations=obligations;this.auth=auth;}
     @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('SUPERVISOR')")
     @Operation(summary = "Crear obligación", description = "Disponible únicamente para usuarios con rol SUPERVISOR.")
+    @ApiResponse(responseCode = "201", description = "Obligación creada")
+    @ApiResponse(responseCode = "400", description = "Datos inválidos", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Rol no autorizado", content = @Content(schema = @Schema(implementation = ApiError.class)))
     public Object create(@Valid @RequestBody ObligationService.CreateObligation request){return obligations.create(request);}
     @GetMapping
     @Operation(summary = "Consultar obligaciones asignadas al usuario autenticado")
+    @ApiResponse(responseCode = "401", description = "Token inválido o ausente", content = @Content(schema = @Schema(implementation = ApiError.class)))
     public Object assigned(Principal principal){return obligations.findForOperator(auth.currentUser(principal.getName()).getId());}
 }

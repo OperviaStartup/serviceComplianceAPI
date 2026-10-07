@@ -50,6 +50,17 @@ class ServiceComplianceIntegrationTests {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
+    @Test void shouldReturnUnauthorizedErrorForInvalidLogin() throws Exception {
+        String invalid = "{\"email\":\"missing@test.com\",\"password\":\"Password123!\"}";
+        mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(invalid))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test void shouldReturnUnauthorizedErrorForProtectedEndpointWithoutToken() throws Exception {
+        mockMvc.perform(get("/api/v1/obligations"))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
     @Test void shouldRegisterExecutionOnlyForAssignedOperator() throws Exception {
         User assigned = userRepository.save(new User("Assigned", "assigned@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
         User another = userRepository.save(new User("Another", "another@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
