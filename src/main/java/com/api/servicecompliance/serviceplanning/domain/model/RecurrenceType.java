@@ -1,0 +1,7 @@
+package com.api.servicecompliance.serviceplanning.domain.model;
+
+public enum RecurrenceType {
+    ONCE,
+    DAILY,
+    WEEKLY
+}

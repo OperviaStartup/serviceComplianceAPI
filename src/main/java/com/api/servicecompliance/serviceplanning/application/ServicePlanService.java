@@ -7,6 +7,7 @@ import com.api.servicecompliance.serviceplanning.domain.model.ServicePlanState;
 import com.api.servicecompliance.serviceplanning.domain.repository.CompanyServiceRepository;
 import com.api.servicecompliance.serviceplanning.domain.repository.ServicePlanIdempotencyRepository;
 import com.api.servicecompliance.serviceplanning.domain.repository.ServicePlanRepository;
+import com.api.servicecompliance.serviceplanning.domain.repository.ObligationDefinitionRepository;
 import com.api.servicecompliance.shared.domain.ApiConflictException;
 import com.api.servicecompliance.shared.domain.FieldValidationException;
 import com.api.servicecompliance.shared.domain.ResourceNotFoundException;
@@ -42,15 +43,18 @@ public class ServicePlanService {
     private final CompanyServiceRepository companyServices;
     private final ServicePlanIdempotencyRepository idempotencyRecords;
     private final SiteAuthorizationPort sites;
+    private final ObligationDefinitionRepository definitions;
     private final TransactionTemplate transactions;
 
     public ServicePlanService(ServicePlanRepository plans, CompanyServiceRepository companyServices,
                               ServicePlanIdempotencyRepository idempotencyRecords,
-                              SiteAuthorizationPort sites, PlatformTransactionManager transactionManager) {
+                              SiteAuthorizationPort sites, ObligationDefinitionRepository definitions,
+                              PlatformTransactionManager transactionManager) {
         this.plans = plans;
         this.companyServices = companyServices;
         this.idempotencyRecords = idempotencyRecords;
         this.sites = sites;
+        this.definitions = definitions;
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
@@ -74,7 +78,7 @@ public class ServicePlanService {
     public ServicePlanResponse find(Long id, User actor) {
         requireAdministrator(actor);
         return plans.findByIdAndCompanyId(id, actor.getCompanyId())
-                .map(ServicePlanResponse::from)
+                .map(this::response)
                 .orElseThrow(() -> new ResourceNotFoundException("Plan de servicio no encontrado"));
     }
 
@@ -96,7 +100,7 @@ public class ServicePlanService {
         idempotencyRecords.saveAndFlush(new ServicePlanIdempotency(actor.getCompanyId(), actor.getId(),
                 CREATE_OPERATION, idempotencyKey, requestHash, plan.getId(), now,
                 now.plus(IDEMPOTENCY_RETENTION)));
-        return ServicePlanResponse.from(plan);
+        return response(plan);
     }
 
     private ServicePlanResponse replayAfterConcurrentRequest(User actor, String idempotencyKey,
@@ -115,7 +119,7 @@ public class ServicePlanService {
                     "La clave de idempotencia ya fue utilizada con una solicitud diferente");
         }
         return plans.findById(record.getServicePlanId())
-                .map(ServicePlanResponse::from)
+                .map(this::response)
                 .orElseThrow(() -> new IllegalStateException("Idempotency record without service plan"));
     }
 
@@ -163,6 +167,12 @@ public class ServicePlanService {
         }
     }
 
+    private ServicePlanResponse response(ServicePlan plan) {
+        List<String> missingRequirements = definitions.existsByServicePlanId(plan.getId())
+                ? List.of() : INITIAL_REQUIREMENTS;
+        return ServicePlanResponse.from(plan, missingRequirements);
+    }
+
     public record CreateServicePlanRequest(
             @NotNull @Positive Long serviceId,
             @NotNull @Positive Long siteId,
@@ -184,11 +194,11 @@ public class ServicePlanService {
             Instant updatedAt,
             long version,
             List<String> missingActivationRequirements) {
-        static ServicePlanResponse from(ServicePlan plan) {
+        static ServicePlanResponse from(ServicePlan plan, List<String> missingRequirements) {
             return new ServicePlanResponse(plan.getId(), plan.getCompanyId(), plan.getServiceId(),
                     plan.getSiteId(), plan.getStartDate(), plan.getEndDate(), plan.getTimezone(),
                     plan.getState(), plan.getCreatedBy(), plan.getCreatedAt(), plan.getUpdatedAt(),
-                    plan.getVersion(), INITIAL_REQUIREMENTS);
+                    plan.getVersion(), missingRequirements);
         }
     }
 }

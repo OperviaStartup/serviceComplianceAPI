@@ -1,8 +1,8 @@
 # Backend product contracts — draft for approval
 
 Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and `BE-US-20`.
-Decisions 6 and 8 were approved for `BE-US-01` on 2026-11-05 with the refinements recorded
-below. Decisions 7 and 9–18 remain draft. Preserve `/api/v1` compatibility or document a
+Decisions 6 and 8 were approved for `BE-US-01`; the definition-only portions of decisions 7 and 10
+were approved for `BE-US-02` on 2026-11-05. Decisions 9 and 11–18 remain draft. Preserve `/api/v1` compatibility or document a
 consumer migration path.
 
 ## Proposed defaults for review
@@ -17,10 +17,10 @@ Decisions 1–3 below are approved with the access-token correction in the appro
 | 4 | Generate 256-bit random single-use invitation tokens, store only SHA-256 hashes, deliver 72-hour activation links through Resend, and return the existing accepted account on an exact replay. New accounts use an eight-digit Peruvian DNI as login identifier and set their password during activation; passwords are never emailed. Existing-account conflicts return `ACCOUNT_ALREADY_EXISTS`. |
 | 5 | Stripe sandbox subscriptions project a local entitlement: `PLUS` has 3 seats and `CUSTOM` uses the purchased Stripe quantity. Active accounts and live pending invitations consume seats; suspension, invitation expiry, or cancellation releases one. Serialize allocation on the company subscription so the first committed request receives the final seat and the loser receives `SEAT_LIMIT_REACHED`. Reactivation must acquire a seat again. |
 | 6 | Store plan periods as inclusive local dates `[start, end]` in `America/Lima`. Drafts may overlap; activation rejects overlap for the same company/service/site. Amend by creating a new immutable version for future occurrences. |
-| 7 | Use a constrained recurring schedule plus local execution window and IANA timezone. Define DST gap/fold behavior in the accepted schedule schema; persist occurrence identity and regenerate missed horizon safely. |
+| 7 | Definitions use structured `ONCE`, `DAILY`, or `WEEKLY` schedules with recurrence interval, optional weekdays/occurrence date, local start time, execution-window duration, and `America/Lima`. Occurrence generation and recovery remain owned by `BE-US-25`. |
 | 8 | Scope operation IDs to company, actor, command, and client key. Persist a SHA-256 hash of normalized semantic fields and the created-resource response reference for seven days. Exact replay returns the original result; a changed payload returns `IDEMPOTENCY_KEY_MISMATCH`. A unique database constraint serializes concurrent use of the same key. |
 | 9 | Server transitions `NOT_STARTED → IN_PROGRESS → SUBMITTED` or `EXCEPTED`, with explicit cancellation/retry policy. Sync and compliance states use separate fields/enums. |
-| 10 | Store evidence in private object storage, use server-authorized upload/download, checksum and content validation, bounded size/type allowlist, malware scan before availability, and documented retention. Keep metadata in PostgreSQL. |
+| 10 | `BE-US-02` defines `PHOTO`, `QR_CODE`, `LOCATION`, and `SIGNATURE` requirements with required/optional status, count bounds, and allowlisted type-specific metadata. Private storage, upload/download, integrity, scanning, and retention remain owned by `BE-US-06`. |
 | 11 | Accept bounded batches with client operation IDs and dependency references; process in dependency order with per-item transactions and stable results `SYNCED`, `RETRYABLE`, `REQUIRES_ATTENTION`. Use version conflicts for stale writes. |
 | 12 | Derive operational status from execution lifecycle and window with precedence `EXCEPTED`, `SUBMITTED`, `IN_PROGRESS`, `OVERDUE`, `ASSIGNED`; overdue starts at exclusive window end. Reuse the same predicate for rows and counts. |
 | 13 | Freeze the submitted evidence/exception set by version; review reads one immutable submitted version, and later additions require a new explicit revision. |
@@ -46,7 +46,9 @@ The remaining schedule syntax, content allowlist, report performance target, and
    `America/Lima`, overlapping drafts, activation-time overlap rejection for the same
    company/service/site, and immutable successor versions for amendments. Affected: `BE-US-01`,
    `02`, `03`.
-7. **Schedules.** Select syntax, daylight-saving behavior, generation horizon, occurrence identity, and missed-run recovery. Affected: `BE-US-02`, `03`, `25`.
+7. **Schedules.** Approved for `BE-US-02`: structured `ONCE`, `DAILY`, and `WEEKLY` definitions,
+   inclusive plan-date validation, local time/window, and `America/Lima`. Generation horizon,
+   occurrence identity, and missed-run recovery remain for `BE-US-25`. Affected: `BE-US-02`, `03`, `25`.
 8. **Idempotency.** Approved initial contract for `BE-US-01`: require `Idempotency-Key`, scope it
    by company, actor, and command, retain it for seven days, hash normalized semantic fields,
    replay the original resource for the same payload, and return
@@ -55,7 +57,11 @@ The remaining schedule syntax, content allowlist, report performance target, and
    contract requires an explicitly approved extension. Affected: `BE-US-01`, `05`, `06`, `07`,
    `08`, `21`.
 9. **Execution lifecycle.** Define start, submit, exception, cancellation/retry states and transition authority; keep execution, sync, and compliance states separate. Affected: `BE-US-05`, `07`, `08`, `09`.
-10. **Evidence.** Choose storage, upload/download protocol, allowed formats/sizes, integrity, retention, scanning, and privacy behavior. Evidence requirements apply only to their version and context. Affected: `BE-US-02`, `06`, `10`, `21`.
+10. **Evidence.** Approved definition contract for `BE-US-02`: reuse the stable evidence codes
+    `PHOTO`, `QR_CODE`, `LOCATION`, and `SIGNATURE`; record required/optional status, minimum and
+    maximum count, and allowlisted type-specific validation metadata. Storage, upload/download,
+    formats/sizes, integrity, retention, scanning, and privacy remain pending for `BE-US-06`.
+    Evidence requirements apply only to their definition/version. Affected: `BE-US-02`, `06`, `10`, `21`.
 11. **Offline sync.** Set batch limits, client references/dependency order, transaction boundaries, per-item outcomes, conflict and retry codes, and interruption recovery. Affected: `BE-US-08`, `23`.
 
 ## Review, follow-up, and reporting
