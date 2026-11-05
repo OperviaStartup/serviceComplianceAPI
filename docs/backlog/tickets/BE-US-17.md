@@ -2,6 +2,8 @@
 
 - Type: `feature`
 - Parent story: `US-17`
+- Bounded context: `Identity & Access`
+- Context type: `Generic`
 - Sprint: `UNASSIGNED`
 - Status: `IN_REVIEW`
 - Assignee: `UNASSIGNED`

@@ -2,6 +2,8 @@
 
 - Type: `feature`
 - Parent story: `US-03`
+- Bounded context: `Service Planning`
+- Context type: `Supporting`
 - Sprint: `UNASSIGNED`
 - Status: `DRAFT`
 - Assignee: `UNASSIGNED`

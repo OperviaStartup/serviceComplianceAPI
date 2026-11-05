@@ -2,6 +2,8 @@
 
 - Type: `feature`
 - Parent story: `US-08`
+- Bounded context: `Field Operations`
+- Context type: `Supporting`
 - Sprint: `UNASSIGNED`
 - Status: `DRAFT`
 - Assignee: `UNASSIGNED`
