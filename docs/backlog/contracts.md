@@ -11,8 +11,8 @@ Decisions 1–3 below are approved with the access-token correction in the appro
 | 1 | Three roles: company ADMIN manages plans/users, scoped SUPERVISOR assigns/reviews, assigned OPERATOR performs work. Company is the tenant boundary; site membership is the initial organizational scope. Resolve every resource through tenant and permitted site before reading protected data. |
 | 2 | Extend `ApiError` compatibly with optional `details` and `currentVersion`; use stable machine-readable 409 codes for idempotency mismatch, version conflict, overlap, and invalid state. Mutations accept an explicit expected version where concurrency matters. |
 | 3 | Use 30-minute access JWTs and 7-day rotating opaque refresh tokens stored as hashes; resolve the active account on every protected request. Logout revokes the refresh family; suspension revokes all active sessions. |
-| 4 | Generate random single-use invitation tokens, store hashes, send a link by an approved channel, expire tokens, and return the existing accepted account on an exact replay. Existing-account conflicts require an explicit admin flow. |
-| 5 | Reserve a contracted seat for each active account and each live pending invitation; release on invitation expiry/cancel or account deactivation. Enforce with a serialized company-level transaction. |
+| 4 | Generate 256-bit random single-use invitation tokens, store only SHA-256 hashes, deliver 72-hour activation links through Resend, and return the existing accepted account on an exact replay. New accounts use an eight-digit Peruvian DNI as login identifier and set their password during activation; passwords are never emailed. Existing-account conflicts return `ACCOUNT_ALREADY_EXISTS`. |
+| 5 | Stripe sandbox subscriptions project a local entitlement: `PLUS` has 3 seats and `CUSTOM` uses the purchased Stripe quantity. Active accounts and live pending invitations consume seats; suspension, invitation expiry, or cancellation releases one. Serialize allocation on the company subscription so the first committed request receives the final seat and the loser receives `SEAT_LIMIT_REACHED`. Reactivation must acquire a seat again. |
 | 6 | Store plan periods as `[start, end)` in the site's IANA timezone; reject active overlap for the same company/service/site. Amend by creating a new immutable version for future occurrences. |
 | 7 | Use a constrained recurring schedule plus local execution window and IANA timezone. Define DST gap/fold behavior in the accepted schedule schema; persist occurrence identity and regenerate missed horizon safely. |
 | 8 | Scope operation IDs to company, actor, command, and client key. Persist canonical request hash and response; exact replay returns prior result, changed payload is 409. Define retention based on offline retry duration. |
@@ -27,15 +27,15 @@ Decisions 1–3 below are approved with the access-token correction in the appro
 | 17 | Persist recipient-specific alert occurrences keyed by rule, resource, occurrence and recipient; initially deliver in-app, with a recoverable outbox for later channels. Re-evaluate current access before exposing details. |
 | 18 | Produce a version/cutoff-bound CSV report through a bounded asynchronous job; authorize job status and download by tenant/scope, set expiry, and record source versions for reproducibility. |
 
-The remaining numeric limits, schedule syntax, content allowlist, seat capacity source, report performance target, and later API schemas remain open values. They must be fixed in accepted contracts before their affected tickets become `READY`.
+The remaining schedule syntax, content allowlist, report performance target, and later API schemas remain open values. They must be fixed in accepted contracts before their affected tickets become `READY`.
 
 ## Identity and security
 
 1. **Role and scope matrix.** Define administrator, supervisor, operator, company, organizational scope hierarchy, and ownership checks for every command and query. Specify who may administer users and sites, and whether supervisors can act across sites. A tenant identifier must be authoritative server-side. Affected: all tickets; first gate: `BE-US-17`.
 2. **Error and concurrency contract.** Approve the `ApiError` fields, field-level validation shape, 409 reason codes, expected-version transport, and retry guidance. Existing `ApiError(code,message,timestamp)` lacks a 409/version contract. Affected: all write tickets; first gate: `BE-US-17`/`BE-US-01`.
 3. **Session policy.** Decide access/refresh lifetimes, refresh rotation, logout, revocation, disabled-account behavior, and whether token claims or fresh account lookup control access. Current JWT contains email subject and role, without refresh or company identity. Affected: `BE-US-17`, `BE-US-20`.
-4. **Invitation policy.** Decide token entropy/storage, delivery channel, expiry, one-time use, replay response, and existing-account handling. Affected: `BE-US-20`.
-5. **Seat policy.** Decide whether pending invitations reserve seats and which account states count; specify behavior under simultaneous invitation acceptance/suspension. Affected: `BE-US-20`.
+4. **Invitation policy.** Approved for `BE-US-20`: 256-bit token, SHA-256 storage, Resend delivery, 72-hour expiry, single use, idempotent accepted replay, DNI login, password creation during activation, and explicit existing-account conflict.
+5. **Seat policy.** Approved for `BE-US-20`: local Stripe entitlement projection, Plus 3 seats, Custom purchased quantity, active plus live pending consumption, suspension/expiry/cancellation release, serialized final-seat allocation, and seat reacquisition on reactivation.
 
 ## Planning and field work
 
@@ -80,6 +80,6 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05; decisions 1–3, access JWT 30 minutes and rotating opaque refresh token 7 days.
-- Approved references: User approval for `BE-US-17`; decisions 4–18 remain pending.
-- First implementation gate: `BE-US-17` may proceed on this selected feature branch. Other tickets unlock only when their relevant decisions and merged dependencies are verified.
+- Approval date and revision: 2026-11-05; decisions 1–5, including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI login, and Stripe-backed seat rules.
+- Approved references: User approval for `BE-US-17` and `BE-US-20`; decisions 6–18 remain pending.
+- First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.
