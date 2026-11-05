@@ -5,6 +5,7 @@ import com.api.servicecompliance.authentication.domain.repository.UserRepository
 import com.api.servicecompliance.authentication.infrastructure.security.JwtService;
 import com.api.servicecompliance.shared.domain.DomainException;
 import com.api.servicecompliance.shared.domain.Role;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,7 +32,11 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request){
-        User user = users.findByEmail(request.email()).orElseThrow(InvalidCredentialsException::new);
+        String identifier = request.identifier().trim();
+        User user = (identifier.matches("\\d{8}")
+                ? users.findByDocumentNumber(identifier)
+                : users.findByEmailIgnoreCase(identifier))
+                .orElseThrow(InvalidCredentialsException::new);
         boolean validPassword = passwordEncoder.matches(request.password(), user.getPasswordHash());
         if (!validPassword || !user.isActive()) throw new InvalidCredentialsException();
         return response(user);
@@ -56,13 +61,16 @@ public class AuthService {
     }
 
     private AuthResponse response(User user, String refreshToken) {
-        return new AuthResponse(jwtService.createToken(user), user.getId(), user.getFullName(), user.getEmail(), user.getRole(), refreshToken);
+        return new AuthResponse(jwtService.createToken(user), user.getId(), user.getFullName(), user.getEmail(),
+                user.getDocumentNumber(), user.getRole(), refreshToken);
     }
 
     public record RegisterRequest(@NotBlank @Size(max=255) String fullName,
                                   @NotBlank @Email @Size(max=255) String email,
                                   @NotBlank @Size(min=8,max=72) String password){}
-    public record LoginRequest(@NotBlank @Email String email,@NotBlank String password){}
-    public record AuthResponse(String token,Long userId,String fullName,String email,Role role,String refreshToken){}
+    public record LoginRequest(@NotBlank @Size(max=255) @JsonAlias("email") String identifier,
+                               @NotBlank String password){}
+    public record AuthResponse(String token,Long userId,String fullName,String email,String documentNumber,
+                               Role role,String refreshToken){}
     public record RefreshRequest(@NotBlank String refreshToken){}
 }

@@ -42,6 +42,6 @@ public class AuthController {
     @GetMapping("/me")
     @Operation(summary = "Consultar perfil actual")
     @io.swagger.v3.oas.annotations.security.SecurityRequirement(name = "bearerAuth")
-    public UserResponse me(Principal principal){var user=authService.currentUser(principal.getName());return new UserResponse(user.getId(),user.getFullName(),user.getEmail(),user.getRole().name());}
-    public record UserResponse(Long id,String fullName,String email,String role){}
+    public UserResponse me(Principal principal){var user=authService.currentUser(principal.getName());return new UserResponse(user.getId(),user.getFullName(),user.getEmail(),user.getDocumentNumber(),user.getRole().name());}
+    public record UserResponse(Long id,String fullName,String email,String documentNumber,String role){}
 }

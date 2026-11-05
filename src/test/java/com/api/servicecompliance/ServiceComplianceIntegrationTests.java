@@ -2,6 +2,17 @@ package com.api.servicecompliance;
 
 import com.api.servicecompliance.authentication.domain.model.User;
 import com.api.servicecompliance.authentication.application.RefreshService;
+import com.api.servicecompliance.authentication.application.ConflictException;
+import com.api.servicecompliance.authentication.application.InvitationDeliveryRequested;
+import com.api.servicecompliance.authentication.application.InvitationEmailSender;
+import com.api.servicecompliance.authentication.application.InvitationService;
+import com.api.servicecompliance.authentication.domain.model.CompanySubscription;
+import com.api.servicecompliance.authentication.domain.model.SiteScope;
+import com.api.servicecompliance.authentication.domain.model.SubscriptionPlan;
+import com.api.servicecompliance.authentication.domain.model.SubscriptionStatus;
+import com.api.servicecompliance.authentication.domain.repository.CompanySubscriptionRepository;
+import com.api.servicecompliance.authentication.domain.repository.SiteScopeRepository;
+import com.api.servicecompliance.authentication.domain.repository.UserInvitationRepository;
 import com.api.servicecompliance.authentication.infrastructure.persistence.RefreshSessionRepository;
 import com.api.servicecompliance.authentication.infrastructure.persistence.RefreshFamilyRepository;
 import com.api.servicecompliance.executions.domain.repository.ExecutionRepository;
@@ -19,6 +30,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,6 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(ServiceComplianceIntegrationTests.InvitationEmailTestConfiguration.class)
 class ServiceComplianceIntegrationTests {
     @Autowired MockMvc mockMvc;
     ObjectMapper objectMapper = new ObjectMapper();
@@ -46,8 +62,25 @@ class ServiceComplianceIntegrationTests {
     @Autowired RefreshFamilyRepository families;
     @Autowired ExecutionRepository executions;
     @Autowired EvidenceRepository evidence;
+    @Autowired UserInvitationRepository invitations;
+    @Autowired CompanySubscriptionRepository subscriptions;
+    @Autowired SiteScopeRepository sites;
+    @Autowired InvitationService invitationService;
+    @Autowired CapturingInvitationEmailSender invitationEmailSender;
 
-    @BeforeEach void cleanDatabase(){evidence.deleteAll(); executions.deleteAll(); obligationRepository.deleteAll(); sessions.deleteAll(); families.deleteAll(); userRepository.deleteAll();}
+    @BeforeEach void cleanDatabase(){
+        evidence.deleteAll();
+        executions.deleteAll();
+        obligationRepository.deleteAll();
+        sessions.deleteAll();
+        families.deleteAll();
+        invitations.deleteAll();
+        userRepository.deleteAll();
+        subscriptions.deleteAll();
+        if (!sites.existsById(1L)) sites.save(new SiteScope(1L, 1L, "Legacy site"));
+        subscriptions.save(new CompanySubscription(1L, SubscriptionPlan.PLUS, 3, SubscriptionStatus.ACTIVE));
+        invitationEmailSender.clear();
+    }
 
     private void ensureAdditionalPostgresScopes() throws java.sql.SQLException {
         try (var connection=java.util.Objects.requireNonNull(jdbcTemplate.getDataSource()).getConnection()) {
@@ -70,7 +103,168 @@ class ServiceComplianceIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(containsString("\"/api/v1/auth/refresh\"")))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(containsString("\"/api/v1/auth/logout\"")))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(containsString("\"/api/v1/invitations\"")))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(containsString("Registro público deshabilitado")));
+    }
+
+    @Test void administratorInvitesAndUserActivatesExactlyOneAccountWithDniLogin() throws Exception {
+        User administrator = userRepository.save(new User("Administrator", "admin-invite@test.com",
+                passwordEncoder.encode("Password123!"), Role.ADMIN, 1L, 1L));
+        String request = "{\"fullName\":\"Invited Operator\",\"email\":\"invitee@test.com\","
+                + "\"documentNumber\":\"12345678\",\"role\":\"OPERATOR\",\"siteId\":1}";
+        JsonNode invitation = objectMapper.readTree(mockMvc.perform(post("/api/v1/invitations")
+                        .header("Authorization", "Bearer " + login(administrator.getEmail()))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.documentNumber").value("12345678"))
+                .andReturn().getResponse().getContentAsString());
+        InvitationDeliveryRequested delivery = invitationEmailSender.forInvitation(invitation.get("id").asText());
+        org.assertj.core.api.Assertions.assertThat(delivery.token()).isNotBlank();
+        String storedHash = jdbcTemplate.queryForObject(
+                "SELECT token_hash FROM user_invitations WHERE id = ?", String.class, invitation.get("id").asText());
+        org.assertj.core.api.Assertions.assertThat(storedHash)
+                .hasSize(64)
+                .doesNotContain(delivery.token());
+        org.assertj.core.api.Assertions.assertThat(invitations.findById(invitation.get("id").asText()).orElseThrow()
+                .getDeliveryStatus().name()).isEqualTo("SENT");
+
+        String acceptance = "{\"token\":\"" + delivery.token() + "\",\"password\":\"SecurePassword123!\"}";
+        JsonNode accepted = objectMapper.readTree(mockMvc.perform(post("/api/v1/invitations/accept")
+                        .contentType(MediaType.APPLICATION_JSON).content(acceptance))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andReturn().getResponse().getContentAsString());
+        mockMvc.perform(post("/api/v1/invitations/accept")
+                        .contentType(MediaType.APPLICATION_JSON).content(acceptance))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(accepted.get("userId").asLong()));
+        mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identifier\":\"12345678\",\"password\":\"SecurePassword123!\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentNumber").value("12345678"));
+        org.assertj.core.api.Assertions.assertThat(userRepository.findByDocumentNumber("12345678")).isPresent();
+    }
+
+    @Test void expiredInvitationCannotBeAcceptedAndNoLongerReservesSeat() throws Exception {
+        User administrator = userRepository.save(new User("Administrator", "expiry-admin@test.com",
+                passwordEncoder.encode("Password123!"), Role.ADMIN, 1L, 1L));
+        String adminToken = login(administrator.getEmail());
+        String firstRequest = "{\"fullName\":\"Expired\",\"email\":\"expired@test.com\","
+                + "\"documentNumber\":\"55555555\",\"role\":\"OPERATOR\",\"siteId\":1}";
+        JsonNode first = objectMapper.readTree(mockMvc.perform(post("/api/v1/invitations")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(firstRequest))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        String expiredToken = invitationEmailSender.forInvitation(first.get("id").asText()).token();
+        jdbcTemplate.update("UPDATE user_invitations SET expires_at = ? WHERE id = ?",
+                java.sql.Timestamp.from(Instant.now().minusSeconds(1)), first.get("id").asText());
+
+        mockMvc.perform(post("/api/v1/invitations/accept").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + expiredToken + "\",\"password\":\"SecurePassword123!\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVITATION_EXPIRED"));
+        String replacement = "{\"fullName\":\"Replacement\",\"email\":\"expiry-replacement@test.com\","
+                + "\"documentNumber\":\"66666666\",\"role\":\"OPERATOR\",\"siteId\":1}";
+        mockMvc.perform(post("/api/v1/invitations").header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(replacement))
+                .andExpect(status().isCreated());
+    }
+
+    @Test void concurrentInvitationsCannotExceedFinalSubscriptionSeat() throws Exception {
+        User administrator = userRepository.save(new User("Administrator", "seat-admin@test.com",
+                passwordEncoder.encode("Password123!"), Role.ADMIN, 1L, 1L));
+        userRepository.save(new User("Existing Operator", "existing-seat@test.com",
+                passwordEncoder.encode("Password123!"), Role.OPERATOR, 1L, 1L));
+        var firstRequest = new InvitationService.CreateInvitationRequest(
+                "First", "first-seat@test.com", "11111111", Role.OPERATOR, 1L);
+        var secondRequest = new InvitationService.CreateInvitationRequest(
+                "Second", "second-seat@test.com", "22222222", Role.OPERATOR, 1L);
+        var ready = new java.util.concurrent.CountDownLatch(2);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.function.Function<InvitationService.CreateInvitationRequest, String> invite = request -> {
+                ready.countDown();
+                try {
+                    if (!start.await(10, java.util.concurrent.TimeUnit.SECONDS)) return "TIMEOUT";
+                    invitationService.create(request, administrator);
+                    return "CREATED";
+                } catch (ConflictException exception) {
+                    return exception.getCode();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    return "INTERRUPTED";
+                }
+            };
+            var first = executor.submit(() -> invite.apply(firstRequest));
+            var second = executor.submit(() -> invite.apply(secondRequest));
+            org.assertj.core.api.Assertions.assertThat(ready.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            org.assertj.core.api.Assertions.assertThat(java.util.List.of(
+                            first.get(20, java.util.concurrent.TimeUnit.SECONDS),
+                            second.get(20, java.util.concurrent.TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder("CREATED", "SEAT_LIMIT_REACHED");
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test void suspensionReleasesSeatAndReactivationMustAcquireItAgain() throws Exception {
+        User administrator = userRepository.save(new User("Administrator", "lifecycle-admin@test.com",
+                passwordEncoder.encode("Password123!"), Role.ADMIN, 1L, 1L));
+        User target = userRepository.save(new User("Target", "target@test.com",
+                passwordEncoder.encode("Password123!"), Role.OPERATOR, 1L, 1L));
+        userRepository.save(new User("Other", "other-seat@test.com",
+                passwordEncoder.encode("Password123!"), Role.OPERATOR, 1L, 1L));
+        String adminToken = login(administrator.getEmail());
+        mockMvc.perform(post("/api/v1/users/" + target.getId() + "/suspend")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+
+        String request = "{\"fullName\":\"Replacement\",\"email\":\"replacement@test.com\","
+                + "\"documentNumber\":\"33333333\",\"role\":\"OPERATOR\",\"siteId\":1}";
+        String invitationId = objectMapper.readTree(mockMvc.perform(post("/api/v1/invitations")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
+        mockMvc.perform(post("/api/v1/users/" + target.getId() + "/reactivate")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SEAT_LIMIT_REACHED"));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/v1/invitations/" + invitationId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/v1/users/" + target.getId() + "/reactivate")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test void onlyCompanyAdministratorCanAssignInvitationScope() throws Exception {
+        ensureAdditionalPostgresScopes();
+        if (!sites.existsById(2L)) sites.save(new SiteScope(2L, 2L, "Other company site"));
+        User administrator = userRepository.save(new User("Administrator", "scope-admin@test.com",
+                passwordEncoder.encode("Password123!"), Role.ADMIN, 1L, 1L));
+        User supervisor = userRepository.save(new User("Supervisor", "scope-supervisor@test.com",
+                passwordEncoder.encode("Password123!"), Role.SUPERVISOR, 1L, 1L));
+        User foreignUser = userRepository.save(new User("Foreign", "foreign-user@test.com",
+                passwordEncoder.encode("Password123!"), Role.OPERATOR, 2L, 2L));
+        String request = "{\"fullName\":\"Operator\",\"email\":\"scope-invite@test.com\","
+                + "\"documentNumber\":\"44444444\",\"role\":\"OPERATOR\",\"siteId\":2}";
+        mockMvc.perform(post("/api/v1/invitations")
+                        .header("Authorization", "Bearer " + login(supervisor.getEmail()))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/invitations")
+                        .header("Authorization", "Bearer " + login(administrator.getEmail()))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/users/" + foreignUser.getId() + "/suspend")
+                        .header("Authorization", "Bearer " + login(administrator.getEmail())))
+                .andExpect(status().isForbidden());
     }
     @Test void shouldLoginAndReadAuthenticatedProfile() throws Exception {
         User user=userRepository.save(new User("Operator", "operator@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR, 1L, 1L));
@@ -281,5 +475,33 @@ class ServiceComplianceIntegrationTests {
         String response = mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(response).get("token").asText();
+    }
+
+    @TestConfiguration
+    static class InvitationEmailTestConfiguration {
+        @Bean
+        @Primary
+        CapturingInvitationEmailSender capturingInvitationEmailSender() {
+            return new CapturingInvitationEmailSender();
+        }
+    }
+
+    static class CapturingInvitationEmailSender implements InvitationEmailSender {
+        private final java.util.concurrent.ConcurrentMap<String, InvitationDeliveryRequested> deliveries =
+                new java.util.concurrent.ConcurrentHashMap<>();
+
+        @Override
+        public String send(InvitationDeliveryRequested delivery) {
+            deliveries.put(delivery.invitationId(), delivery);
+            return "test-email-" + delivery.invitationId();
+        }
+
+        InvitationDeliveryRequested forInvitation(String invitationId) {
+            return deliveries.get(invitationId);
+        }
+
+        void clear() {
+            deliveries.clear();
+        }
     }
 }
