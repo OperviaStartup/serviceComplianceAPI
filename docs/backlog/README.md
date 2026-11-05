@@ -8,6 +8,12 @@ Each ticket records its own acceptance criteria, dependencies, verification, com
 
 The [contract pack](contracts.md) is pending product approval. Record approved decisions as versioned contracts before implementing affected behavior. Preserve the original story and ticket IDs; assign real sprints only when the team chooses them.
 
+## Bounded-context ownership
+
+The approved [backend bounded-context map](../architecture/bounded-contexts.md) assigns every ticket
+to exactly one business boundary. Each ticket records its bounded context and context type as durable
+metadata. Cross-context dependencies use explicit contracts and do not transfer domain ownership.
+
 ## Dependency order
 
 | Gate | Tickets | Required predecessors |

@@ -2,6 +2,8 @@
 
 - Type: `feature`
 - Parent story: `US-21`
+- Bounded context: `Compliance Management`
+- Context type: `Core Domain`
 - Sprint: `UNASSIGNED`
 - Status: `DRAFT`
 - Assignee: `UNASSIGNED`
