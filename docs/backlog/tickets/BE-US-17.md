@@ -39,10 +39,10 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 ## Progress evidence
 
 - Status: `IN_PROGRESS`; readiness: `READY` for final review on this branch.
-- Commits: `a0ed751` (current-account bearer checks and 30-minute access token), `bc411e9` (active-account state); final tenant/session commit pending.
+- Commits: `a0ed751` (current-account bearer checks and 30-minute access token), `bc411e9` (active-account state), `3626fee` (tenant-aware sessions, migrations, authorization, and verification).
 - Checks: Java 17 `clean test` passed with H2 and with PostgreSQL 16/Flyway. PostgreSQL checks include concurrent same-token rotation and an upgrade from V1/V2 seeded with linked user, obligation, execution, and evidence data through V5.
 - Blockers: `BE-US-20` must call the provided suspension capability; invitation onboarding is not part of this ticket. No blocker remains for the BE-US-17 implementation itself.
-- Next action: Review and commit the tenant/session slice, then verify the resulting branch commit and mark criteria covered without claiming merge or deployment.
+- Next action: Push this feature branch for team review and integration; do not mark `DONE` until the commits are integrated and verified on the selected base.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.
 
 ## Current-code assessment (2026-11-05)
