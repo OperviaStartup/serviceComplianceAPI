@@ -14,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
@@ -32,6 +33,7 @@ class ServiceComplianceIntegrationTests {
     @Autowired UserRepository userRepository;
     @Autowired ObligationRepository obligationRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired JdbcTemplate jdbcTemplate;
 
     @BeforeEach void cleanDatabase(){obligationRepository.deleteAll(); userRepository.deleteAll();}
 
@@ -59,6 +61,38 @@ class ServiceComplianceIntegrationTests {
     @Test void shouldReturnUnauthorizedErrorForProtectedEndpointWithoutToken() throws Exception {
         mockMvc.perform(get("/api/v1/obligations"))
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        mockMvc.perform(get("/api/v1/auth/me"))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test void shouldRejectAccessTokenWhenAccountNoLongerExists() throws Exception {
+        User operator = userRepository.save(new User("Former Operator", "former@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
+        String token = login(operator.getEmail());
+        userRepository.delete(operator);
+
+        mockMvc.perform(get("/api/v1/obligations").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test void shouldNeverEchoMalformedAccessToken() throws Exception {
+        String token = "private-token-value-that-must-not-appear";
+        String body = mockMvc.perform(get("/api/v1/obligations").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(body).doesNotContain(token);
+    }
+
+    @Test void shouldUseCurrentRoleInsteadOfRoleInPreviouslyIssuedToken() throws Exception {
+        User supervisor = userRepository.save(new User("Former Supervisor", "former-supervisor@test.com", passwordEncoder.encode("Password123!"), Role.SUPERVISOR));
+        User operator = userRepository.save(new User("Assignee", "assignee@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
+        String token = login(supervisor.getEmail());
+        jdbcTemplate.update("UPDATE users SET role = ? WHERE id = ?", "OPERATOR", supervisor.getId());
+        String request = "{\"title\":\"Clean warehouse\",\"description\":\"Clean floor\",\"siteName\":\"Warehouse\",\"assignedOperatorId\":" + operator.getId() + ",\"dueAt\":\"2030-01-01T10:00:00Z\"}";
+
+        mockMvc.perform(post("/api/v1/obligations").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isForbidden());
     }
 
     @Test void shouldRegisterExecutionOnlyForAssignedOperator() throws Exception {

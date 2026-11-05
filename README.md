@@ -69,7 +69,7 @@ La aplicación usa las siguientes variables (según `application.properties` y `
 | `DB_PASSWORD` | Contraseña de PostgreSQL | `service_password` |
 | `JDBC_DATABASE_URL` | URL JDBC completa (opcional, alternativa a `DB_*`) | `jdbc:postgresql://localhost:5432/service_compliance` |
 | `JWT_SECRET` | Clave de firma para JWT | `cambiar-en-entorno-real` |
-| `JWT_EXPIRATION_MS` | Expiración del token en milisegundos | `86400000` |
+| `JWT_EXPIRATION_MS` | Expiración del token de acceso en milisegundos (30 minutos por defecto) | `1800000` |
 | `BOOTSTRAP_SUPERVISOR_EMAIL` | Email del supervisor inicial | `supervisor@empresa.com` |
 | `BOOTSTRAP_SUPERVISOR_PASSWORD` | Contraseña del supervisor inicial | `cambiar-en-entorno-real` |
 
@@ -114,7 +114,7 @@ export DB_NAME=service_compliance
 export DB_USERNAME=service_user
 export DB_PASSWORD=service_password
 export JWT_SECRET=local-development-secret-change-this
-export JWT_EXPIRATION_MS=86400000
+export JWT_EXPIRATION_MS=1800000
 ```
 
 ### Windows PowerShell
@@ -127,7 +127,7 @@ $env:DB_NAME="service_compliance"
 $env:DB_USERNAME="service_user"
 $env:DB_PASSWORD="service_password"
 $env:JWT_SECRET="local-development-secret-change-this"
-$env:JWT_EXPIRATION_MS="86400000"
+$env:JWT_EXPIRATION_MS="1800000"
 ```
 
 Da permisos al wrapper (Unix) y ejecuta:
@@ -180,7 +180,7 @@ docker run --rm \
   -e DB_USERNAME=service_user \
   -e DB_PASSWORD=service_password \
   -e JWT_SECRET=local-development-secret-change-this \
-  -e JWT_EXPIRATION_MS=86400000 \
+  -e JWT_EXPIRATION_MS=1800000 \
   service-compliance-api
 ```
 
