@@ -22,7 +22,8 @@ public class AuthService {
     }
     public AuthResponse login(LoginRequest request){
         User user=users.findByEmail(request.email()).orElseThrow(InvalidCredentialsException::new);
-        if(!passwordEncoder.matches(request.password(),user.getPasswordHash())) throw new InvalidCredentialsException();
+        boolean validPassword=passwordEncoder.matches(request.password(),user.getPasswordHash());
+        if(!validPassword || !user.isActive()) throw new InvalidCredentialsException();
         return response(user);
     }
     public User currentUser(String email){return users.findByEmail(email).orElseThrow(()->new DomainException("Usuario no encontrado"));}

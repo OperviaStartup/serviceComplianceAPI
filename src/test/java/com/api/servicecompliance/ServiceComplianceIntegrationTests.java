@@ -95,6 +95,18 @@ class ServiceComplianceIntegrationTests {
                 .andExpect(status().isForbidden());
     }
 
+    @Test void shouldRejectDisabledAccountLoginAndPreviouslyIssuedAccessToken() throws Exception {
+        User operator = userRepository.save(new User("Disabled Operator", "disabled@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
+        String token = login(operator.getEmail());
+        jdbcTemplate.update("UPDATE users SET active = ? WHERE id = ?", false, operator.getId());
+
+        String request = "{\"email\":\"disabled@test.com\",\"password\":\"Password123!\"}";
+        mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        mockMvc.perform(get("/api/v1/obligations").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
     @Test void shouldRegisterExecutionOnlyForAssignedOperator() throws Exception {
         User assigned = userRepository.save(new User("Assigned", "assigned@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
         User another = userRepository.save(new User("Another", "another@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));

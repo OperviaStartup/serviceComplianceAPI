@@ -40,7 +40,7 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 
 - Status: `DRAFT`; readiness: `PARTIAL` (invalid-credential and secret-safe error behavior can be verified independently; tenant, scope, lifecycle, and revocation behavior requires accepted contracts).
 - Commits: `NONE` for implementation.
-- Checks: Java 17 container `bash gradlew test --no-daemon` passed for the current security slice (H2 with Flyway disabled). PostgreSQL migration and tenant-isolation checks remain unrun.
+- Checks: Java 17 container `bash gradlew test --no-daemon` passed after account-state and bearer checks (H2 with Flyway disabled). PostgreSQL migration and tenant-isolation checks remain unrun.
 - Blockers: No tenant/site data model or refresh-session persistence yet; decisions 1–3 are approved in `docs/backlog/contracts.md`, but this ticket has additional implementation slices.
 - Next action: Add tenant/site/account-state migration and authorization matrix, then rotating refresh/logout/suspension behavior with PostgreSQL verification.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.
@@ -55,6 +55,6 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 | AC-05 | JWT expiration is configurable through `app.jwt.expiration-ms`. | No refresh, rotation, logout, or revocation. |
 | AC-06 | Error mapping emits generic 401/403/500 bodies; the filter clears invalid JWT authentication without logging it. | No dedicated tests asserting tokens and secrets stay out of errors/logs. |
 
-The first implementation slice now reads the current account on each bearer request, uses its current role, requires authentication for `/api/v1/auth/me`, and defaults the access JWT to 30 minutes. Tests cover deleted accounts, role changes, and token-safe unauthorized responses. These changes are local on this branch and do not complete AC-01–AC-06.
+The first implementation slices now read the current account on each bearer request, use its current role and active state, require authentication for `/api/v1/auth/me`, and default the access JWT to 30 minutes. `V2__add_user_active_state.sql` backfills existing accounts as active. Tests cover deleted and disabled accounts, role changes, and token-safe unauthorized responses. These changes are local on this branch and do not complete AC-01–AC-06.
 
 `/api/v1/auth/register` is currently public; its restriction and existing-client transition are owned jointly with `BE-US-20`. Existing H2 tests disable Flyway, so they do not verify the PostgreSQL tenant migration or isolation contract.
