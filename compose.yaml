@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-service_compliance}
+      POSTGRES_USER: ${DB_USERNAME:-service_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-service_password}
+    ports:
+      # The local Java API connects with DB_HOST=localhost and DB_PORT=5433.
+      - "${DB_DOCKER_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    # An explicit name keeps the database when the Compose project is recreated.
+    name: service_compliance_postgres_data

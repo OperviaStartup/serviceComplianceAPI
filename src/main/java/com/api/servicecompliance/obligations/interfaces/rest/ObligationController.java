@@ -21,14 +21,14 @@ import java.security.Principal;
 public class ObligationController {
     private final ObligationService obligations; private final AuthService auth;
     public ObligationController(ObligationService obligations,AuthService auth){this.obligations=obligations;this.auth=auth;}
-    @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('SUPERVISOR')")
-    @Operation(summary = "Crear obligación", description = "Disponible únicamente para usuarios con rol SUPERVISOR.")
+    @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasAnyRole('SUPERVISOR','ADMIN')")
+    @Operation(summary = "Crear obligación", description = "Disponible para usuarios con rol SUPERVISOR o ADMIN dentro de su empresa y sede.")
     @ApiResponse(responseCode = "201", description = "Obligación creada")
     @ApiResponse(responseCode = "400", description = "Datos inválidos", content = @Content(schema = @Schema(implementation = ApiError.class)))
     @ApiResponse(responseCode = "403", description = "Rol no autorizado", content = @Content(schema = @Schema(implementation = ApiError.class)))
-    public Object create(@Valid @RequestBody ObligationService.CreateObligation request){return obligations.create(request);}
+    public Object create(@Valid @RequestBody ObligationService.CreateObligation request, Principal principal){return obligations.create(request,auth.currentUser(principal.getName()));}
     @GetMapping
     @Operation(summary = "Consultar obligaciones asignadas al usuario autenticado")
     @ApiResponse(responseCode = "401", description = "Token inválido o ausente", content = @Content(schema = @Schema(implementation = ApiError.class)))
-    public Object assigned(Principal principal){return obligations.findForOperator(auth.currentUser(principal.getName()).getId());}
+    public Object assigned(Principal principal){return obligations.findForOperator(auth.currentUser(principal.getName()));}
 }

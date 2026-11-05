@@ -16,7 +16,8 @@ public class JwtService {
         if(secret.length()<32) throw new IllegalArgumentException("JWT_SECRET debe tener al menos 32 caracteres");
         key=Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));this.expirationMs=expirationMs;
     }
-    public String createToken(User user){return Jwts.builder().subject(user.getEmail()).claim("role",user.getRole().name()).issuedAt(new Date()).expiration(new Date(System.currentTimeMillis()+expirationMs)).signWith(key).compact();}
+    public String createToken(User user){return Jwts.builder().subject(user.getEmail()).claim("role",user.getRole().name()).claim("sessionVersion",user.getSessionVersion()).claim("userId",user.getId()).claim("companyId",user.getCompanyId()).claim("siteId",user.getSiteId()).issuedAt(new Date()).expiration(new Date(System.currentTimeMillis()+expirationMs)).signWith(key).compact();}
     public String subject(String token){return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().getSubject();}
+    public long sessionVersion(String token){Number version=Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().get("sessionVersion",Number.class); if(version==null) throw new IllegalArgumentException("Missing session version"); return version.longValue();}
     public String role(String token){return (String) Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().get("role");}
 }

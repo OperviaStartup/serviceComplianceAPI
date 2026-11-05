@@ -1,6 +1,10 @@
 HELP.md
+.env
+.env.*
+!.env.example
 .gradle
 build/
+build.root-owned-backup/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/

@@ -1,5 +1,6 @@
 package com.api.servicecompliance.authentication.infrastructure.security;
 
+import com.api.servicecompliance.authentication.domain.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,13 +16,16 @@ import java.util.List;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
-    public JwtAuthenticationFilter(JwtService jwtService){this.jwtService=jwtService;}
+    private final UserRepository users;
+    public JwtAuthenticationFilter(JwtService jwtService,UserRepository users){this.jwtService=jwtService;this.users=users;}
     @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws ServletException,IOException {
         String header=request.getHeader("Authorization");
         if(header!=null && header.startsWith("Bearer ")){
-            try { String token=header.substring(7); String email=jwtService.subject(token);
-                var auth=new UsernamePasswordAuthenticationToken(email,null,List.of(new SimpleGrantedAuthority("ROLE_"+jwtService.role(token))));
-                SecurityContextHolder.getContext().setAuthentication(auth);
+            try { String token=header.substring(7); String email=jwtService.subject(token); long version=jwtService.sessionVersion(token);
+                users.findByEmail(email).filter(user -> user.isActive() && user.getSessionVersion()==version).ifPresent(user -> {
+                    var auth=new UsernamePasswordAuthenticationToken(user.getEmail(),null,List.of(new SimpleGrantedAuthority("ROLE_"+user.getRole().name())));
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                });
             } catch(Exception ignored) { SecurityContextHolder.clearContext(); }
         }
         chain.doFilter(request,response);

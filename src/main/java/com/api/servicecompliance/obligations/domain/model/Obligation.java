@@ -6,6 +6,8 @@ import java.time.Instant;
 @Entity @Table(name="obligations")
 public class Obligation {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
+    @Column(nullable=false) private Long companyId;
+    @Column(nullable=false) private Long siteId;
     @Column(nullable=false) private String title;
     @Column(nullable=false,length=1000) private String description;
     @Column(nullable=false) private String siteName;
@@ -13,6 +15,7 @@ public class Obligation {
     @Enumerated(EnumType.STRING) @Column(nullable=false) private ObligationStatus status;
     @Column(nullable=false) private Instant dueAt;
     protected Obligation(){}
-    public Obligation(String title,String description,String siteName,Long assignedOperatorId,Instant dueAt){this.title=title;this.description=description;this.siteName=siteName;this.assignedOperatorId=assignedOperatorId;this.dueAt=dueAt;this.status=ObligationStatus.ASSIGNED;}
+    public Obligation(String title,String description,String siteName,Long assignedOperatorId,Instant dueAt,Long companyId,Long siteId){this.companyId=java.util.Objects.requireNonNull(companyId);this.siteId=java.util.Objects.requireNonNull(siteId);this.title=title;this.description=description;this.siteName=siteName;this.assignedOperatorId=assignedOperatorId;this.dueAt=dueAt;this.status=ObligationStatus.ASSIGNED;}
+    public Long getCompanyId(){return companyId;} public Long getSiteId(){return siteId;}
     public Long getId(){return id;} public String getTitle(){return title;} public String getDescription(){return description;} public String getSiteName(){return siteName;} public Long getAssignedOperatorId(){return assignedOperatorId;} public ObligationStatus getStatus(){return status;} public Instant getDueAt(){return dueAt;}
 }
