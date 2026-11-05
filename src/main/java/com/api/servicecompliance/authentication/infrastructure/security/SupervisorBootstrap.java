@@ -22,6 +22,6 @@ public class SupervisorBootstrap implements ApplicationRunner {
         if(email.isBlank() && password.isBlank()) return;
         if(email.isBlank() || password.isBlank()) throw new IllegalStateException("Debe configurar ambos datos del supervisor inicial");
         if(password.length()<12) throw new IllegalStateException("La contraseña del supervisor inicial debe tener al menos 12 caracteres");
-        if(!users.existsByEmail(email)) users.save(new User("Initial Supervisor",email,passwordEncoder.encode(password),Role.SUPERVISOR));
+        if(!users.existsByEmail(email)) users.save(new User("Initial Supervisor",email,passwordEncoder.encode(password),Role.SUPERVISOR,1L,1L));
     }
 }

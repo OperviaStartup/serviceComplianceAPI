@@ -24,16 +24,16 @@ public class ExecutionController {
     @Operation(summary = "Registrar ejecución", description = "El operario autenticado solo puede registrar una ejecución sobre una obligación que le fue asignada.")
     @ApiResponse(responseCode = "400", description = "Datos inválidos o obligación no asignada", content = @Content(schema = @Schema(implementation = ApiError.class)))
     @ApiResponse(responseCode = "401", description = "Token inválido o ausente", content = @Content(schema = @Schema(implementation = ApiError.class)))
-    public Object register(@Valid @RequestBody ExecutionService.RegisterExecution request,Principal principal){return executions.register(request,auth.currentUser(principal.getName()).getId());}
+    public Object register(@Valid @RequestBody ExecutionService.RegisterExecution request,Principal principal){return executions.register(request,auth.currentUser(principal.getName()));}
     @GetMapping("/{id}")
     @Operation(summary = "Consultar ejecución")
     @ApiResponse(responseCode = "404", description = "Ejecución no encontrada", content = @Content(schema = @Schema(implementation = ApiError.class)))
-    public Object find(@PathVariable Long id){return executions.find(id);}
+    public Object find(@PathVariable Long id, Principal principal){return executions.find(id,auth.currentUser(principal.getName()));}
     @PostMapping("/{id}/evidence")
     @Operation(summary = "Adjuntar evidencia", description = "Registra los metadatos de una evidencia asociada a una ejecución.")
     @ApiResponse(responseCode = "400", description = "Datos inválidos o ejecución no perteneciente al usuario", content = @Content(schema = @Schema(implementation = ApiError.class)))
-    public Object addEvidence(@PathVariable Long id,@Valid @RequestBody EvidenceService.EvidenceRequest request,Principal principal){return evidence.add(id,request,auth.currentUser(principal.getName()).getId());}
+    public Object addEvidence(@PathVariable Long id,@Valid @RequestBody EvidenceService.EvidenceRequest request,Principal principal){var actor=auth.currentUser(principal.getName()); executions.find(id,actor); return evidence.add(id,request,actor.getId());}
     @GetMapping("/{id}/evidence")
     @Operation(summary = "Consultar evidencias de una ejecución")
-    public Object findEvidence(@PathVariable Long id){return evidence.findByExecution(id);}
+    public Object findEvidence(@PathVariable Long id, Principal principal){executions.find(id,auth.currentUser(principal.getName())); return evidence.findByExecution(id);}
 }

@@ -25,7 +25,7 @@ public class SecurityConfig {
                     response.setStatus(403); response.setContentType("application/json");
                     response.getWriter().write("{\"code\":\"FORBIDDEN\",\"message\":\"El usuario no tiene permisos para realizar esta operación\",\"timestamp\":\""+Instant.now()+"\"}");
                 }))
-                .authorizeHttpRequests(a->a.requestMatchers("/api/v1/auth/**","/api-docs/**","/swagger-ui/**","/swagger-ui.html","/actuator/health","/health").permitAll().anyRequest().authenticated())
+                .authorizeHttpRequests(a->a.requestMatchers("/api/v1/auth/register","/api/v1/auth/login","/api/v1/auth/refresh","/api/v1/auth/logout","/api-docs/**","/swagger-ui/**","/swagger-ui.html","/actuator/health","/health").permitAll().anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).build();
     }
 }

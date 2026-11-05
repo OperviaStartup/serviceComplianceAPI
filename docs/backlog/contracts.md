@@ -1,16 +1,16 @@
 # Backend product contracts — draft for approval
 
-Status: **DRAFT**. These are decisions to review, not approved behavior. The normalized backlog names the subjects but does not define their wire formats or business rules. Record the accepted choices here (or in linked ADRs) and update affected ticket records before implementation. Preserve `/api/v1` compatibility or document a consumer migration path.
+Status: **PARTIALLY APPROVED**. Decisions 1–3 were approved by the user for `BE-US-17` on 2026-11-05, with a 30-minute access token instead of the proposed 15 minutes. Decisions 4–18 remain draft. Preserve `/api/v1` compatibility or document a consumer migration path.
 
 ## Proposed defaults for review
 
-These recommendations are working proposals; none is authorized for implementation yet.
+Decisions 1–3 below are approved with the access-token correction in the approval record. Decisions 4–18 are working proposals.
 
 | # | Proposed decision |
 | --- | --- |
 | 1 | Three roles: company ADMIN manages plans/users, scoped SUPERVISOR assigns/reviews, assigned OPERATOR performs work. Company is the tenant boundary; site membership is the initial organizational scope. Resolve every resource through tenant and permitted site before reading protected data. |
 | 2 | Extend `ApiError` compatibly with optional `details` and `currentVersion`; use stable machine-readable 409 codes for idempotency mismatch, version conflict, overlap, and invalid state. Mutations accept an explicit expected version where concurrency matters. |
-| 3 | Use short-lived access JWTs and rotating opaque refresh tokens stored as hashes; validate active account on protected requests. Logout revokes the refresh family; suspension revokes all active sessions. Publish exact lifetimes before implementation. |
+| 3 | Use 30-minute access JWTs and 7-day rotating opaque refresh tokens stored as hashes; resolve the active account on every protected request. Logout revokes the refresh family; suspension revokes all active sessions. |
 | 4 | Generate random single-use invitation tokens, store hashes, send a link by an approved channel, expire tokens, and return the existing accepted account on an exact replay. Existing-account conflicts require an explicit admin flow. |
 | 5 | Reserve a contracted seat for each active account and each live pending invitation; release on invitation expiry/cancel or account deactivation. Enforce with a serialized company-level transaction. |
 | 6 | Store plan periods as `[start, end)` in the site's IANA timezone; reject active overlap for the same company/service/site. Amend by creating a new immutable version for future occurrences. |
@@ -27,7 +27,7 @@ These recommendations are working proposals; none is authorized for implementati
 | 17 | Persist recipient-specific alert occurrences keyed by rule, resource, occurrence and recipient; initially deliver in-app, with a recoverable outbox for later channels. Re-evaluate current access before exposing details. |
 | 18 | Produce a version/cutoff-bound CSV report through a bounded asynchronous job; authorize job status and download by tenant/scope, set expiry, and record source versions for reproducibility. |
 
-The exact numeric lifetimes, limits, schedule syntax, content allowlist, seat capacity source, report performance target, and API schemas remain open values. They must be fixed in accepted contracts before their affected tickets become `READY`.
+The remaining numeric limits, schedule syntax, content allowlist, seat capacity source, report performance target, and later API schemas remain open values. They must be fixed in accepted contracts before their affected tickets become `READY`.
 
 ## Identity and security
 
@@ -56,9 +56,30 @@ The exact numeric lifetimes, limits, schedule syntax, content allowlist, seat ca
 17. **Alerts.** Define recipient resolution, channels, rule configuration, occurrence identity, deduplication, delivery retry, and escalation. Affected: `BE-US-16`, `23`.
 18. **Reports.** Define export format, cutoff/timezone, consistent snapshot, asynchronous job retention, download authorization, size limit, and performance target. Affected: `BE-US-15`.
 
+## Session implementation
+
+Access JWTs expire after 30 minutes by default and are checked against the active account and its current role, scope, and session version. Refresh tokens are random opaque 256-bit values; only SHA-256 hashes are stored. Each successful refresh rotates the token with a seven-day lifetime. Reuse revokes the entire family, as does logout; previously issued access JWTs remain usable until expiration after logout. The `RefreshService.suspend` transaction disables the account, increments its session version, and revokes every refresh family; the future BE-US-20 suspension command must call this capability rather than update `active` directly. Existing JWTs without a session version require a new login after deployment.
+
+## BE-US-17 authorization matrix
+
+| Surface | ADMIN | SUPERVISOR | OPERATOR | Scope and ownership |
+| --- | --- | --- | --- | --- |
+| Login, refresh, logout | Allowed | Allowed | Allowed | Account must be active; refresh token must be current, unexpired, and not revoked. |
+| Current profile | Allowed | Allowed | Allowed | Only the authenticated account. |
+| Create obligation | Allowed | Allowed | Denied | Assignee must be an active operator in the actor's company and site. |
+| List assigned obligations | Own assignments | Own assignments | Own assignments | Query is restricted by authenticated user, company, and site. |
+| Register execution or evidence | Denied | Denied | Allowed | Only the current assigned operator in the obligation's company and site. |
+| Read execution or evidence | Allowed | Allowed | Allowed for owner | ADMIN/SUPERVISOR require matching company and site; OPERATOR must also own the execution. |
+
+Executions and evidence derive their tenant and site boundary from the owning obligation. The legacy migration assigns every existing user and obligation to company `1` and site `1`; execution and evidence links remain unchanged.
+
+## Registration migration
+
+**BREAKING CHANGE:** Public `POST /api/v1/auth/register` is disabled and returns 403 without creating an account. Existing clients must stop calling it and transition to invitation acceptance when BE-US-20 is implemented; no invitation flow is provided by BE-US-17.
+
 ## Approval record
 
-- Decision owner: **UNASSIGNED**
-- Approval date and revision: **PENDING**
-- Approved references: **NONE**
-- First implementation gate: `BE-US-17` after decisions 1–3 are accepted; other tickets unlock only when their relevant decisions and merged dependencies are verified.
+- Decision owner: User direction in this conversation.
+- Approval date and revision: 2026-11-05; decisions 1–3, access JWT 30 minutes and rotating opaque refresh token 7 days.
+- Approved references: User approval for `BE-US-17`; decisions 4–18 remain pending.
+- First implementation gate: `BE-US-17` may proceed on this selected feature branch. Other tickets unlock only when their relevant decisions and merged dependencies are verified.
