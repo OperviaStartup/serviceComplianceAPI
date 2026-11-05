@@ -1,8 +1,10 @@
 package com.api.servicecompliance.shared.web;
 
-import com.api.servicecompliance.authentication.application.ConflictException;
+import com.api.servicecompliance.shared.domain.ApiConflictException;
 import com.api.servicecompliance.shared.domain.DomainException;
+import com.api.servicecompliance.shared.domain.FieldValidationException;
 import com.api.servicecompliance.shared.domain.ResourceNotFoundException;
+import com.api.servicecompliance.shared.domain.ScopedAccessDeniedException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -16,10 +18,11 @@ import java.time.Instant;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-    @ExceptionHandler(ConflictException.class)
+    @ExceptionHandler(ApiConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
-    ApiError handleConflict(ConflictException exception) {
-        return new ApiError(exception.getCode(), exception.getMessage(), Instant.now());
+    ApiError handleConflict(ApiConflictException exception) {
+        return new ApiError(exception.getCode(), exception.getMessage(), Instant.now(), null,
+                exception.getCurrentVersion());
     }
 
     @ExceptionHandler(DomainException.class)
@@ -37,10 +40,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ApiError handleValidation(MethodArgumentNotValidException exception) {
-        String message = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .distinct().reduce((left, right) -> left + "; " + right).orElse("Datos inválidos");
-        return new ApiError("VALIDATION_ERROR", message, Instant.now());
+        var details = new java.util.LinkedHashMap<String, java.util.List<String>>();
+        exception.getBindingResult().getFieldErrors().forEach(error ->
+                details.computeIfAbsent(error.getField(), ignored -> new java.util.ArrayList<>())
+                        .add(error.getDefaultMessage()));
+        return new ApiError("VALIDATION_ERROR", "Datos inválidos", Instant.now(), details, null);
+    }
+
+    @ExceptionHandler(FieldValidationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ApiError handleFieldValidation(FieldValidationException exception) {
+        return new ApiError("VALIDATION_ERROR", exception.getMessage(), Instant.now(),
+                exception.getDetails(), null);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -59,6 +70,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     ApiError handleAccessDenied(AccessDeniedException exception) {
         return new ApiError("FORBIDDEN", "El usuario no tiene permisos para realizar esta operación", Instant.now());
+    }
+
+    @ExceptionHandler(ScopedAccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    ApiError handleScopedAccessDenied(ScopedAccessDeniedException exception) {
+        return new ApiError("FORBIDDEN", "El recurso no pertenece al alcance autorizado", Instant.now(),
+                exception.getDetails(), null);
     }
 
     @ExceptionHandler(Exception.class)
