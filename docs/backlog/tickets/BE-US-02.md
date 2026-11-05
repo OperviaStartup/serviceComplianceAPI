@@ -41,7 +41,7 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 ## Progress evidence
 
 - Status: `IN_REVIEW`
-- Commits: `PENDING_LOCAL_COMMIT`
+- Commits: `89812ad`
 - Checks: focused `ObligationDefinitionIntegrationTests` and complete `./gradlew build` passed on
   Java 17; V9 applied to PostgreSQL 16; Hibernate validation and host startup succeeded on an
   isolated random port because the user's API already occupied port 8080.
