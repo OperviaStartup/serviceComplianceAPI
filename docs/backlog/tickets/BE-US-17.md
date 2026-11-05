@@ -3,7 +3,7 @@
 - Type: `feature`
 - Parent story: `US-17`
 - Sprint: `UNASSIGNED`
-- Status: `DRAFT`
+- Status: `IN_REVIEW`
 - Assignee: `UNASSIGNED`
 - Estimate: `8` points (planning baseline; refine with delivery team)
 
@@ -13,12 +13,12 @@ A user accesses only the capabilities and company data permitted by the active a
 
 ## Acceptance criteria
 
-- [ ] AC-01: An active account can authenticate and receives a token or session containing user ID, company ID, role, and the data required to enforce organizational scope.
-- [ ] AC-02: Invalid credentials and disabled accounts are rejected without revealing which credential failed.
-- [ ] AC-03: Every protected endpoint validates authentication, role, tenant, organizational scope, and resource ownership.
-- [ ] AC-04: Operators cannot perform supervisor or administrator operations, and no user can access another company's resources.
-- [ ] AC-05: Access and refresh expiration, rotation, logout, and revocation behavior follow one documented policy.
-- [ ] AC-06: Tokens and authentication secrets are excluded from logs and error bodies.
+- [x] AC-01: An active account can authenticate and receives a token or session containing user ID, company ID, role, and the data required to enforce organizational scope.
+- [x] AC-02: Invalid credentials and disabled accounts are rejected without revealing which credential failed.
+- [x] AC-03: Every protected endpoint validates authentication, role, tenant, organizational scope, and resource ownership.
+- [x] AC-04: Operators cannot perform supervisor or administrator operations, and no user can access another company's resources.
+- [x] AC-05: Access and refresh expiration, rotation, logout, and revocation behavior follow one documented policy.
+- [x] AC-06: Tokens and authentication secrets are excluded from logs and error bodies.
 
 ## Dependencies
 
@@ -38,11 +38,11 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 
 ## Progress evidence
 
-- Status: `DRAFT`; readiness: `PARTIAL` (invalid-credential and secret-safe error behavior can be verified independently; tenant, scope, lifecycle, and revocation behavior requires accepted contracts).
-- Commits: `a0ed751` (current-account bearer checks and 30-minute access token), `bc411e9` (active-account state).
-- Checks: Java 17 container `bash gradlew test --no-daemon` passed after account-state and bearer checks (H2 with Flyway disabled). PostgreSQL migration and tenant-isolation checks remain unrun.
-- Blockers: No tenant/site data model or refresh-session persistence yet; decisions 1–3 are approved in `docs/backlog/contracts.md`, but this ticket has additional implementation slices.
-- Next action: Add tenant/site/account-state migration and authorization matrix, then rotating refresh/logout/suspension behavior with PostgreSQL verification.
+- Status: `IN_PROGRESS`; readiness: `READY` for final review on this branch.
+- Commits: `a0ed751` (current-account bearer checks and 30-minute access token), `bc411e9` (active-account state); final tenant/session commit pending.
+- Checks: Java 17 `clean test` passed with H2 and with PostgreSQL 16/Flyway. PostgreSQL checks include concurrent same-token rotation and an upgrade from V1/V2 seeded with linked user, obligation, execution, and evidence data through V5.
+- Blockers: `BE-US-20` must call the provided suspension capability; invitation onboarding is not part of this ticket. No blocker remains for the BE-US-17 implementation itself.
+- Next action: Review and commit the tenant/session slice, then verify the resulting branch commit and mark criteria covered without claiming merge or deployment.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.
 
 ## Current-code assessment (2026-11-05)
@@ -55,6 +55,6 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 | AC-05 | JWT expiration is configurable through `app.jwt.expiration-ms`. | No refresh, rotation, logout, or revocation. |
 | AC-06 | Error mapping emits generic 401/403/500 bodies; the filter clears invalid JWT authentication without logging it. | No dedicated tests asserting tokens and secrets stay out of errors/logs. |
 
-The first implementation slices now read the current account on each bearer request, use its current role and active state, require authentication for `/api/v1/auth/me`, and default the access JWT to 30 minutes. `V2__add_user_active_state.sql` backfills existing accounts as active. Tests cover deleted and disabled accounts, role changes, and token-safe unauthorized responses. These changes are local on this branch and do not complete AC-01–AC-06.
+The implementation now reads the current account on each bearer request, uses its current role, scope, active state, and session version, requires authentication for `/api/v1/auth/me`, and defaults the access JWT to 30 minutes. Versioned migrations backfill active state, refresh sessions, the approved legacy company/site, and session version. Rotating seven-day refresh tokens are stored only as hashes; replay, logout, and suspension revoke sessions. Public registration is disabled pending `BE-US-20`. Tests cover JWT identity claims, invalid and disabled accounts, role changes, tenant/site/ownership isolation, token-safe errors, refresh rotation/replay/concurrency, logout, suspension/reactivation, OpenAPI paths, and the operator HTTP journey.
 
 `/api/v1/auth/register` is currently public; its restriction and existing-client transition are owned jointly with `BE-US-20`. Existing H2 tests disable Flyway, so they do not verify the PostgreSQL tenant migration or isolation contract.

@@ -56,6 +56,27 @@ The remaining numeric limits, schedule syntax, content allowlist, seat capacity 
 17. **Alerts.** Define recipient resolution, channels, rule configuration, occurrence identity, deduplication, delivery retry, and escalation. Affected: `BE-US-16`, `23`.
 18. **Reports.** Define export format, cutoff/timezone, consistent snapshot, asynchronous job retention, download authorization, size limit, and performance target. Affected: `BE-US-15`.
 
+## Session implementation
+
+Access JWTs expire after 30 minutes by default and are checked against the active account and its current role, scope, and session version. Refresh tokens are random opaque 256-bit values; only SHA-256 hashes are stored. Each successful refresh rotates the token with a seven-day lifetime. Reuse revokes the entire family, as does logout; previously issued access JWTs remain usable until expiration after logout. The `RefreshService.suspend` transaction disables the account, increments its session version, and revokes every refresh family; the future BE-US-20 suspension command must call this capability rather than update `active` directly. Existing JWTs without a session version require a new login after deployment.
+
+## BE-US-17 authorization matrix
+
+| Surface | ADMIN | SUPERVISOR | OPERATOR | Scope and ownership |
+| --- | --- | --- | --- | --- |
+| Login, refresh, logout | Allowed | Allowed | Allowed | Account must be active; refresh token must be current, unexpired, and not revoked. |
+| Current profile | Allowed | Allowed | Allowed | Only the authenticated account. |
+| Create obligation | Allowed | Allowed | Denied | Assignee must be an active operator in the actor's company and site. |
+| List assigned obligations | Own assignments | Own assignments | Own assignments | Query is restricted by authenticated user, company, and site. |
+| Register execution or evidence | Denied | Denied | Allowed | Only the current assigned operator in the obligation's company and site. |
+| Read execution or evidence | Allowed | Allowed | Allowed for owner | ADMIN/SUPERVISOR require matching company and site; OPERATOR must also own the execution. |
+
+Executions and evidence derive their tenant and site boundary from the owning obligation. The legacy migration assigns every existing user and obligation to company `1` and site `1`; execution and evidence links remain unchanged.
+
+## Registration migration
+
+**BREAKING CHANGE:** Public `POST /api/v1/auth/register` is disabled and returns 403 without creating an account. Existing clients must stop calling it and transition to invitation acceptance when BE-US-20 is implemented; no invitation flow is provided by BE-US-17.
+
 ## Approval record
 
 - Decision owner: User direction in this conversation.

@@ -3,6 +3,10 @@ package com.api.servicecompliance;
 import com.api.servicecompliance.authentication.domain.model.User;
 import com.api.servicecompliance.authentication.domain.repository.UserRepository;
 import com.api.servicecompliance.obligations.domain.repository.ObligationRepository;
+import com.api.servicecompliance.executions.domain.repository.EvidenceRepository;
+import com.api.servicecompliance.executions.domain.repository.ExecutionRepository;
+import com.api.servicecompliance.authentication.infrastructure.persistence.RefreshFamilyRepository;
+import com.api.servicecompliance.authentication.infrastructure.persistence.RefreshSessionRepository;
 import com.api.servicecompliance.shared.domain.Role;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,13 +28,24 @@ class ServiceComplianceE2ETests {
     @Autowired TestRestTemplate client;
     @Autowired UserRepository userRepository;
     @Autowired ObligationRepository obligationRepository;
+    @Autowired EvidenceRepository evidenceRepository;
+    @Autowired ExecutionRepository executionRepository;
+    @Autowired RefreshSessionRepository refreshSessionRepository;
+    @Autowired RefreshFamilyRepository refreshFamilyRepository;
     @Autowired PasswordEncoder passwordEncoder;
 
-    @BeforeEach void cleanDatabase(){obligationRepository.deleteAll(); userRepository.deleteAll();}
+    @BeforeEach void cleanDatabase(){
+        evidenceRepository.deleteAll();
+        executionRepository.deleteAll();
+        obligationRepository.deleteAll();
+        refreshSessionRepository.deleteAll();
+        refreshFamilyRepository.deleteAll();
+        userRepository.deleteAll();
+    }
 
     @Test void shouldCompleteOperatorWorkflowThroughHttp() {
-        User supervisor = userRepository.save(new User("Supervisor E2E", "supervisor-e2e@test.com", passwordEncoder.encode("Password123!"), Role.SUPERVISOR));
-        User operator = userRepository.save(new User("Operator E2E", "operator-e2e@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR));
+        User supervisor = userRepository.save(new User("Supervisor E2E", "supervisor-e2e@test.com", passwordEncoder.encode("Password123!"), Role.SUPERVISOR, 1L, 1L));
+        User operator = userRepository.save(new User("Operator E2E", "operator-e2e@test.com", passwordEncoder.encode("Password123!"), Role.OPERATOR, 1L, 1L));
 
         String supervisorToken = login("supervisor-e2e@test.com");
         String operatorToken = login("operator-e2e@test.com");

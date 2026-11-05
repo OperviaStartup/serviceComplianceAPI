@@ -21,8 +21,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws ServletException,IOException {
         String header=request.getHeader("Authorization");
         if(header!=null && header.startsWith("Bearer ")){
-            try { String token=header.substring(7); String email=jwtService.subject(token);
-                users.findByEmail(email).filter(user -> user.isActive()).ifPresent(user -> {
+            try { String token=header.substring(7); String email=jwtService.subject(token); long version=jwtService.sessionVersion(token);
+                users.findByEmail(email).filter(user -> user.isActive() && user.getSessionVersion()==version).ifPresent(user -> {
                     var auth=new UsernamePasswordAuthenticationToken(user.getEmail(),null,List.of(new SimpleGrantedAuthority("ROLE_"+user.getRole().name())));
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 });
