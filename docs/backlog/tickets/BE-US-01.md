@@ -40,7 +40,7 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 ## Progress evidence
 
 - Status: `IN_REVIEW`
-- Commits: `PENDING_LOCAL_COMMIT`
+- Commits: `c990e43`
 - Checks: focused `ServicePlanIntegrationTests` and complete `./gradlew test` passed on Java 17;
   V7 executed successfully against PostgreSQL 16 inside a rolled-back temporary-schema transaction.
 - Blockers: `NONE`
