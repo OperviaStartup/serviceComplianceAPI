@@ -40,9 +40,11 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 ## Progress evidence
 
 - Status: `IN_REVIEW`
-- Commits: `c990e43`
+- Commits: `c990e43`, `ab99299`
 - Checks: focused `ServicePlanIntegrationTests` and complete `./gradlew test` passed on Java 17;
-  V7 executed successfully against PostgreSQL 16 inside a rolled-back temporary-schema transaction.
+  V7 executed successfully against PostgreSQL 16 inside a rolled-back temporary-schema transaction;
+  V8 applied to the persistent local PostgreSQL schema and host `bootRun` completed Flyway and
+  Hibernate validation before starting on port 8080.
 - Blockers: `NONE`
 - Next action: Review the final diff and merge the verified feature branch through a pull request.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.
