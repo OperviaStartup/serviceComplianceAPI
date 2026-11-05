@@ -1,5 +1,12 @@
 # Backend product contracts — draft for approval
 
+> Field Operations, primera entrega local: las decisiones específicas aprobadas para el flujo
+> online se documentan en [operator-flow.md](../field-operations/operator-flow.md). Mantienen los
+> permisos existentes, un centro por operario, creación directa sin activar planes, pasos con
+> avance, una foto inmutable por requisito, impedimentos separados, envío explícito completo y
+> vencimiento. Ese alcance sustituye los defaults aún draft de ciclo/estado cuando difieren;
+> no aprueba ni implementa automáticamente los tickets de planificación, compliance u offline.
+
 Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and `BE-US-20`.
 Decisions 6 and 8 were approved for `BE-US-01`; the definition-only portions of decisions 7 and 10
 were approved for `BE-US-02` on 2026-11-05. Decisions 9 and 11–18 remain draft. Preserve `/api/v1` compatibility or document a

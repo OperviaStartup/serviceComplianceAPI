@@ -18,6 +18,24 @@ import java.time.Instant;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler({org.springframework.web.bind.MissingServletRequestParameterException.class,
+            org.springframework.web.multipart.support.MissingServletRequestPartException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class})
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ApiError handleRequestBinding(Exception exception) {
+        return new ApiError("INVALID_REQUEST", "Falta un parámetro o su formato es inválido", Instant.now());
+    }
+    @ExceptionHandler(com.api.servicecompliance.executions.application.PhotoStorageUnavailableException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    ApiError handlePhotoStorage(com.api.servicecompliance.executions.application.PhotoStorageUnavailableException exception) {
+        return new ApiError("PHOTO_STORAGE_UNAVAILABLE", exception.getMessage(), Instant.now());
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.CONTENT_TOO_LARGE)
+    ApiError handlePhotoSize(org.springframework.web.multipart.MaxUploadSizeExceededException exception) {
+        return new ApiError("PHOTO_TOO_LARGE", "La fotografía supera el límite de 5 MB", Instant.now());
+    }
     @ExceptionHandler(ApiConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     ApiError handleConflict(ApiConflictException exception) {
