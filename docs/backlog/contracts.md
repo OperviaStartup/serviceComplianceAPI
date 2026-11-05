@@ -1,6 +1,9 @@
 # Backend product contracts — draft for approval
 
-Status: **PARTIALLY APPROVED**. Decisions 1–3 were approved by the user for `BE-US-17` on 2026-11-05, with a 30-minute access token instead of the proposed 15 minutes. Decisions 4–18 remain draft. Preserve `/api/v1` compatibility or document a consumer migration path.
+Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and `BE-US-20`.
+Decisions 6 and 8 were approved for `BE-US-01` on 2026-11-05 with the refinements recorded
+below. Decisions 7 and 9–18 remain draft. Preserve `/api/v1` compatibility or document a
+consumer migration path.
 
 ## Proposed defaults for review
 
@@ -13,9 +16,9 @@ Decisions 1–3 below are approved with the access-token correction in the appro
 | 3 | Use 30-minute access JWTs and 7-day rotating opaque refresh tokens stored as hashes; resolve the active account on every protected request. Logout revokes the refresh family; suspension revokes all active sessions. |
 | 4 | Generate 256-bit random single-use invitation tokens, store only SHA-256 hashes, deliver 72-hour activation links through Resend, and return the existing accepted account on an exact replay. New accounts use an eight-digit Peruvian DNI as login identifier and set their password during activation; passwords are never emailed. Existing-account conflicts return `ACCOUNT_ALREADY_EXISTS`. |
 | 5 | Stripe sandbox subscriptions project a local entitlement: `PLUS` has 3 seats and `CUSTOM` uses the purchased Stripe quantity. Active accounts and live pending invitations consume seats; suspension, invitation expiry, or cancellation releases one. Serialize allocation on the company subscription so the first committed request receives the final seat and the loser receives `SEAT_LIMIT_REACHED`. Reactivation must acquire a seat again. |
-| 6 | Store plan periods as `[start, end)` in the site's IANA timezone; reject active overlap for the same company/service/site. Amend by creating a new immutable version for future occurrences. |
+| 6 | Store plan periods as inclusive local dates `[start, end]` in `America/Lima`. Drafts may overlap; activation rejects overlap for the same company/service/site. Amend by creating a new immutable version for future occurrences. |
 | 7 | Use a constrained recurring schedule plus local execution window and IANA timezone. Define DST gap/fold behavior in the accepted schedule schema; persist occurrence identity and regenerate missed horizon safely. |
-| 8 | Scope operation IDs to company, actor, command, and client key. Persist canonical request hash and response; exact replay returns prior result, changed payload is 409. Define retention based on offline retry duration. |
+| 8 | Scope operation IDs to company, actor, command, and client key. Persist a SHA-256 hash of normalized semantic fields and the created-resource response reference for seven days. Exact replay returns the original result; a changed payload returns `IDEMPOTENCY_KEY_MISMATCH`. A unique database constraint serializes concurrent use of the same key. |
 | 9 | Server transitions `NOT_STARTED → IN_PROGRESS → SUBMITTED` or `EXCEPTED`, with explicit cancellation/retry policy. Sync and compliance states use separate fields/enums. |
 | 10 | Store evidence in private object storage, use server-authorized upload/download, checksum and content validation, bounded size/type allowlist, malware scan before availability, and documented retention. Keep metadata in PostgreSQL. |
 | 11 | Accept bounded batches with client operation IDs and dependency references; process in dependency order with per-item transactions and stable results `SYNCED`, `RETRYABLE`, `REQUIRES_ATTENTION`. Use version conflicts for stale writes. |
@@ -39,9 +42,18 @@ The remaining schedule syntax, content allowlist, report performance target, and
 
 ## Planning and field work
 
-6. **Plan periods.** Define inclusive/exclusive boundaries, overlap for company/service/site, authoritative timezone, and amendment/version rules. Affected: `BE-US-01`, `02`, `03`.
+6. **Plan periods.** Approved for `BE-US-01`: inclusive `LocalDate` boundaries, server-authoritative
+   `America/Lima`, overlapping drafts, activation-time overlap rejection for the same
+   company/service/site, and immutable successor versions for amendments. Affected: `BE-US-01`,
+   `02`, `03`.
 7. **Schedules.** Select syntax, daylight-saving behavior, generation horizon, occurrence identity, and missed-run recovery. Affected: `BE-US-02`, `03`, `25`.
-8. **Idempotency.** Define operation-key scope, retention, payload canonicalization/mismatch, response replay, and concurrency behavior. Affected: `BE-US-01`, `05`, `06`, `07`, `08`, `21`.
+8. **Idempotency.** Approved initial contract for `BE-US-01`: require `Idempotency-Key`, scope it
+   by company, actor, and command, retain it for seven days, hash normalized semantic fields,
+   replay the original resource for the same payload, and return
+   `IDEMPOTENCY_KEY_MISMATCH` for a changed payload. A database uniqueness constraint decides
+   concurrent duplicates. Later affected tickets reuse this baseline unless their offline command
+   contract requires an explicitly approved extension. Affected: `BE-US-01`, `05`, `06`, `07`,
+   `08`, `21`.
 9. **Execution lifecycle.** Define start, submit, exception, cancellation/retry states and transition authority; keep execution, sync, and compliance states separate. Affected: `BE-US-05`, `07`, `08`, `09`.
 10. **Evidence.** Choose storage, upload/download protocol, allowed formats/sizes, integrity, retention, scanning, and privacy behavior. Evidence requirements apply only to their version and context. Affected: `BE-US-02`, `06`, `10`, `21`.
 11. **Offline sync.** Set batch limits, client references/dependency order, transaction boundaries, per-item outcomes, conflict and retry codes, and interruption recovery. Affected: `BE-US-08`, `23`.
@@ -80,6 +92,10 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05; decisions 1–5, including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI login, and Stripe-backed seat rules.
-- Approved references: User approval for `BE-US-17` and `BE-US-20`; decisions 6–18 remain pending.
+- Approval date and revision: 2026-11-05; decisions 1–6 and the BE-US-01 portion of decision 8,
+  including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI
+  login, Stripe-backed seat rules, inclusive Lima plan dates, and seven-day plan-creation
+  idempotency.
+- Approved references: User approval for `BE-US-17`, `BE-US-20`, and `BE-US-01`; decision 7 and
+  decisions 9–18 remain pending, while later uses of decision 8 may require ticket-specific detail.
 - First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.

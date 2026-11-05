@@ -1,14 +1,7 @@
 package com.api.servicecompliance.authentication.application;
 
-public class ConflictException extends RuntimeException {
-    private final String code;
-
+public class ConflictException extends com.api.servicecompliance.shared.domain.ApiConflictException {
     public ConflictException(String code, String message) {
-        super(message);
-        this.code = code;
-    }
-
-    public String getCode() {
-        return code;
+        super(code, message);
     }
 }
