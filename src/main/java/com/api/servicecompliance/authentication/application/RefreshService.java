@@ -79,6 +79,11 @@ public class RefreshService {
         sessions.revokeUser(userId);
     }
 
+    @Transactional
+    public void revokeSessions(Long userId) {
+        sessions.revokeUser(userId);
+    }
+
     private String issue(Long userId, String family) {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);

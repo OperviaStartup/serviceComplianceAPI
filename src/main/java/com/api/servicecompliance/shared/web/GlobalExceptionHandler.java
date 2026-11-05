@@ -1,5 +1,6 @@
 package com.api.servicecompliance.shared.web;
 
+import com.api.servicecompliance.authentication.application.ConflictException;
 import com.api.servicecompliance.shared.domain.DomainException;
 import com.api.servicecompliance.shared.domain.ResourceNotFoundException;
 import org.springframework.security.access.AccessDeniedException;
@@ -15,6 +16,12 @@ import java.time.Instant;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(ConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    ApiError handleConflict(ConflictException exception) {
+        return new ApiError(exception.getCode(), exception.getMessage(), Instant.now());
+    }
+
     @ExceptionHandler(DomainException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ApiError handleDomain(DomainException exception) {
