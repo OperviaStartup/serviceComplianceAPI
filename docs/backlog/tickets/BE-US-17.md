@@ -39,7 +39,7 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 ## Progress evidence
 
 - Status: `DRAFT`; readiness: `PARTIAL` (invalid-credential and secret-safe error behavior can be verified independently; tenant, scope, lifecycle, and revocation behavior requires accepted contracts).
-- Commits: `NONE` for implementation.
+- Commits: `a0ed751` (current-account bearer checks and 30-minute access token), `bc411e9` (active-account state).
 - Checks: Java 17 container `bash gradlew test --no-daemon` passed after account-state and bearer checks (H2 with Flyway disabled). PostgreSQL migration and tenant-isolation checks remain unrun.
 - Blockers: No tenant/site data model or refresh-session persistence yet; decisions 1–3 are approved in `docs/backlog/contracts.md`, but this ticket has additional implementation slices.
 - Next action: Add tenant/site/account-state migration and authorization matrix, then rotating refresh/logout/suspension behavior with PostgreSQL verification.
