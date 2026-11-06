@@ -2,6 +2,7 @@ package com.api.servicecompliance.serviceplanning.interfaces.rest;
 
 import com.api.servicecompliance.authentication.application.AuthService;
 import com.api.servicecompliance.serviceplanning.application.ServicePlanService;
+import com.api.servicecompliance.serviceplanning.application.ServicePlanActivationService;
 import com.api.servicecompliance.shared.web.ApiError;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
@@ -32,10 +34,13 @@ import java.security.Principal;
 public class ServicePlanController {
     private final ServicePlanService servicePlans;
     private final AuthService auth;
+    private final ServicePlanActivationService activation;
 
-    public ServicePlanController(ServicePlanService servicePlans, AuthService auth) {
+    public ServicePlanController(ServicePlanService servicePlans, AuthService auth,
+                                 ServicePlanActivationService activation) {
         this.servicePlans = servicePlans;
         this.auth = auth;
+        this.activation = activation;
     }
 
     @PostMapping
@@ -74,5 +79,38 @@ public class ServicePlanController {
             content = @Content(schema = @Schema(implementation = ApiError.class)))
     public ServicePlanService.ServicePlanResponse find(@PathVariable Long id, Principal principal) {
         return servicePlans.find(id, auth.currentUser(principal.getName()));
+    }
+
+    @PostMapping("/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Activar una versión de plan válida")
+    @ApiResponse(responseCode = "200", description = "Versión activa o activación original reproducida")
+    @ApiResponse(responseCode = "400", description = "Versión esperada ausente", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "401", description = "Token inválido", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Administrador no autorizado", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Plan no encontrado", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "409", description = "Versión, requisitos, estado o periodo en conflicto",
+            content = @Content(schema = @Schema(implementation = ApiError.class)))
+    public ServicePlanActivationService.PlanVersionResponse activate(
+            @PathVariable Long id, @Valid @RequestBody ServicePlanActivationService.VersionCommand command,
+            Principal principal) {
+        return activation.activate(id, command, auth.currentUser(principal.getName()));
+    }
+
+    @PostMapping("/{id}/amendments")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Clonar una versión activa como nueva enmienda en borrador")
+    @ApiResponse(responseCode = "201", description = "Nueva versión en borrador creada")
+    @ApiResponse(responseCode = "400", description = "Versión esperada ausente", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "401", description = "Token inválido", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Administrador no autorizado", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Plan no encontrado", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "409", description = "Versión o estado en conflicto",
+            content = @Content(schema = @Schema(implementation = ApiError.class)))
+    public ServicePlanActivationService.PlanVersionResponse amend(
+            @PathVariable Long id, @Valid @RequestBody ServicePlanActivationService.VersionCommand command,
+            Principal principal) {
+        return activation.amend(id, command, auth.currentUser(principal.getName()));
     }
 }

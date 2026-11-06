@@ -16,7 +16,7 @@ Decisions 1–3 below are approved with the access-token correction in the appro
 | 3 | Use 30-minute access JWTs and 7-day rotating opaque refresh tokens stored as hashes; resolve the active account on every protected request. Logout revokes the refresh family; suspension revokes all active sessions. |
 | 4 | Generate 256-bit random single-use invitation tokens, store only SHA-256 hashes, deliver 72-hour activation links through Resend, and return the existing accepted account on an exact replay. New accounts use an eight-digit Peruvian DNI as login identifier and set their password during activation; passwords are never emailed. Existing-account conflicts return `ACCOUNT_ALREADY_EXISTS`. |
 | 5 | Stripe sandbox subscriptions project a local entitlement: `PLUS` has 3 seats and `CUSTOM` uses the purchased Stripe quantity. Active accounts and live pending invitations consume seats; suspension, invitation expiry, or cancellation releases one. Serialize allocation on the company subscription so the first committed request receives the final seat and the loser receives `SEAT_LIMIT_REACHED`. Reactivation must acquire a seat again. |
-| 6 | Store plan periods as inclusive local dates `[start, end]` in `America/Lima`. Drafts may overlap; activation rejects overlap for the same company/service/site. Amend by creating a new immutable version for future occurrences. |
+| 6 | Store plan periods as inclusive local dates `[start, end]` in `America/Lima`. Drafts may overlap; activation rejects overlap for the same company/service/site and different plan series. An amendment clones the active plan into a new draft business version; activating it supersedes, but never rewrites, the prior version. |
 | 7 | Definitions use structured `ONCE`, `DAILY`, or `WEEKLY` schedules with recurrence interval, optional weekdays/occurrence date, local start time, execution-window duration, and `America/Lima`. Occurrence generation and recovery remain owned by `BE-US-25`. |
 | 8 | Scope operation IDs to company, actor, command, and client key. Persist a SHA-256 hash of normalized semantic fields and the created-resource response reference for seven days. Exact replay returns the original result; a changed payload returns `IDEMPOTENCY_KEY_MISMATCH`. A unique database constraint serializes concurrent use of the same key. |
 | 9 | Server transitions `NOT_STARTED → IN_PROGRESS → SUBMITTED` or `EXCEPTED`, with explicit cancellation/retry policy. Sync and compliance states use separate fields/enums. |
@@ -46,6 +46,12 @@ The remaining schedule syntax, content allowlist, report performance target, and
    `America/Lima`, overlapping drafts, activation-time overlap rejection for the same
    company/service/site, and immutable successor versions for amendments. Affected: `BE-US-01`,
    `02`, `03`.
+
+   Approved activation/version refinement for `BE-US-03`: each row is one immutable business
+   version in a stable series. Activation is idempotent, requires an expected persistence version,
+   and records actor/time. Amendment clones the active version and definitions into the next draft;
+   successor activation atomically marks the predecessor `SUPERSEDED`. A company-service database
+   lock serializes concurrent overlap checks.
 7. **Schedules.** Approved for `BE-US-02`: structured `ONCE`, `DAILY`, and `WEEKLY` definitions,
    inclusive plan-date validation, local time/window, and `America/Lima`. Generation horizon,
    occurrence identity, and missed-run recovery remain for `BE-US-25`. Affected: `BE-US-02`, `03`, `25`.

@@ -12,6 +12,7 @@ import jakarta.persistence.Version;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Entity
 @Table(name = "service_plans")
@@ -57,6 +58,18 @@ public class ServicePlan {
     @Column(nullable = false)
     private long version;
 
+    @Column(nullable = false)
+    private UUID seriesId;
+
+    @Column(nullable = false)
+    private int businessVersion;
+
+    private Long supersedesPlanId;
+
+    private Long activatedBy;
+
+    private Instant activatedAt;
+
     protected ServicePlan() {
     }
 
@@ -72,6 +85,36 @@ public class ServicePlan {
         this.updatedAt = now;
         this.timezone = TIMEZONE;
         this.state = ServicePlanState.DRAFT;
+        this.seriesId = UUID.randomUUID();
+        this.businessVersion = 1;
+    }
+
+    public ServicePlan(ServicePlan source, Long actorId, Instant now) {
+        this.companyId = source.companyId;
+        this.serviceId = source.serviceId;
+        this.siteId = source.siteId;
+        this.startDate = source.startDate;
+        this.endDate = source.endDate;
+        this.timezone = source.timezone;
+        this.state = ServicePlanState.DRAFT;
+        this.createdBy = actorId;
+        this.createdAt = now;
+        this.updatedAt = now;
+        this.seriesId = source.seriesId;
+        this.businessVersion = source.businessVersion + 1;
+        this.supersedesPlanId = source.id;
+    }
+
+    public void activate(Long actorId, Instant now) {
+        state = ServicePlanState.ACTIVE;
+        activatedBy = actorId;
+        activatedAt = now;
+        updatedAt = now;
+    }
+
+    public void supersede(Instant now) {
+        state = ServicePlanState.SUPERSEDED;
+        updatedAt = now;
     }
 
     public Long getId() { return id; }
@@ -87,4 +130,10 @@ public class ServicePlan {
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
     public boolean isDraft() { return state == ServicePlanState.DRAFT; }
+    public boolean isActive() { return state == ServicePlanState.ACTIVE; }
+    public UUID getSeriesId() { return seriesId; }
+    public int getBusinessVersion() { return businessVersion; }
+    public Long getSupersedesPlanId() { return supersedesPlanId; }
+    public Long getActivatedBy() { return activatedBy; }
+    public Instant getActivatedAt() { return activatedAt; }
 }

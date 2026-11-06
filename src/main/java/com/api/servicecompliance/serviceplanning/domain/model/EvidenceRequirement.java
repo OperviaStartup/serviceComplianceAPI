@@ -36,4 +36,8 @@ public class EvidenceRequirement {
     public int getMinimumCount() { return minimumCount; }
     public int getMaximumCount() { return maximumCount; }
     public Map<String, String> getConstraints() { return Map.copyOf(constraints); }
+
+    public EvidenceRequirement copy() {
+        return new EvidenceRequirement(evidenceType, required, minimumCount, maximumCount, constraints);
+    }
 }

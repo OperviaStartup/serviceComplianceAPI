@@ -31,6 +31,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.UUID;
 
 @Service
 public class ServicePlanService {
@@ -193,12 +194,18 @@ public class ServicePlanService {
             Instant createdAt,
             Instant updatedAt,
             long version,
+            UUID seriesId,
+            int businessVersion,
+            Long supersedesPlanId,
+            Long activatedBy,
+            Instant activatedAt,
             List<String> missingActivationRequirements) {
         static ServicePlanResponse from(ServicePlan plan, List<String> missingRequirements) {
             return new ServicePlanResponse(plan.getId(), plan.getCompanyId(), plan.getServiceId(),
                     plan.getSiteId(), plan.getStartDate(), plan.getEndDate(), plan.getTimezone(),
                     plan.getState(), plan.getCreatedBy(), plan.getCreatedAt(), plan.getUpdatedAt(),
-                    plan.getVersion(), missingRequirements);
+                    plan.getVersion(), plan.getSeriesId(), plan.getBusinessVersion(), plan.getSupersedesPlanId(),
+                    plan.getActivatedBy(), plan.getActivatedAt(), missingRequirements);
         }
     }
 }
