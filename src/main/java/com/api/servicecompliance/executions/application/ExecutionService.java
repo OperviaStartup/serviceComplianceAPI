@@ -8,6 +8,7 @@ import com.api.servicecompliance.executions.domain.repository.ExecutionRepositor
 import com.api.servicecompliance.obligations.domain.repository.ObligationRepository;
 import com.api.servicecompliance.shared.domain.DomainException;
 import com.api.servicecompliance.shared.domain.ResourceNotFoundException;
+import com.api.servicecompliance.shared.domain.ApiConflictException;
 import org.springframework.stereotype.Service;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -19,6 +20,7 @@ import jakarta.validation.constraints.Size;
     public Execution register(RegisterExecution request,User actor){
         var obligation=obligationRepository.findById(request.obligationId()).orElseThrow(()->new DomainException("Obligación no encontrada"));
         if(actor.getRole()!=Role.OPERATOR || !obligation.getCompanyId().equals(actor.getCompanyId()) || !obligation.getSiteId().equals(actor.getSiteId()) || !obligation.getAssignedOperatorId().equals(actor.getId())) throw new AccessDeniedException("Forbidden");
+        if (obligation.getStartsAt()!=null) throw new ApiConflictException("EXECUTION_LIFECYCLE_REQUIRED", "Use el flujo de inicio y envío para esta obligación");
         return repository.save(new Execution(request.obligationId(),actor.getId(),request.result(),request.notes()));
     }
     public Execution find(Long id, User actor){

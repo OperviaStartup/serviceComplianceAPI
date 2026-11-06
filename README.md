@@ -2,6 +2,15 @@
 
 API REST para gestionar el cumplimiento de obligaciones operativas, sus ejecuciones y sus evidencias.
 
+## Contrato de detalle para Android
+
+La primera ampliación de Field Operations agrega pasos, requisitos fotográficos y ventana de
+ejecución a la creación directa de obligaciones, junto con `GET /api/v1/obligations/{id}`.
+Consulte [el contrato, permisos, compatibilidad y límites del incremento](docs/field-operations/obligation-detail.md).
+El [contrato del flujo del operario](docs/field-operations/operator-flow.md) agrega inicio,
+avance, fotografías privadas, impedimentos, envío y vencimiento. La conexión a la instancia
+compartida y la configuración del almacenamiento real se verifican por separado.
+
 ## Tecnologías
 
 ![Java](https://img.shields.io/badge/Java-17-2d2d2d)

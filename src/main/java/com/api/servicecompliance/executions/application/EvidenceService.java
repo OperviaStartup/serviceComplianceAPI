@@ -4,6 +4,7 @@ import com.api.servicecompliance.executions.domain.model.Evidence;
 import com.api.servicecompliance.executions.domain.repository.EvidenceRepository;
 import com.api.servicecompliance.executions.domain.repository.ExecutionRepository;
 import com.api.servicecompliance.shared.domain.DomainException;
+import com.api.servicecompliance.shared.domain.ApiConflictException;
 import org.springframework.stereotype.Service;
 import java.util.List;
 import jakarta.validation.constraints.NotBlank;
@@ -16,6 +17,7 @@ import jakarta.validation.constraints.Size;
     public Evidence add(Long executionId, EvidenceRequest request, Long operatorId){
         var execution=executionRepository.findById(executionId).orElseThrow(()->new DomainException("Ejecución no encontrada"));
         if(!execution.getOperatorId().equals(operatorId)) throw new DomainException("La ejecución no pertenece al operario autenticado");
+        if (execution.getStartedAt()!=null) throw new ApiConflictException("PHOTO_UPLOAD_REQUIRED", "Esta ejecución requiere subir una fotografía por requisito; no se aceptan URLs declaradas");
         return evidenceRepository.save(new Evidence(executionId,request.type(),request.url(),request.description()));
     }
     public List<Evidence> findByExecution(Long executionId){return evidenceRepository.findByExecutionId(executionId);}
