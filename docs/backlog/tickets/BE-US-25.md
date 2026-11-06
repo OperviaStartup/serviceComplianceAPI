@@ -43,7 +43,7 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 ## Progress evidence
 
 - Status: `IN_REVIEW`
-- Commits: `LOCAL_FEATURE_BRANCH_PENDING_COMMIT`
+- Commits: `1a7ffeb`
 - Checks: `compileJava`, focused generation tests, full existing test suite, Flyway V13/V14 startup, and OpenAPI route verification passed
 - Blockers: `NONE_KNOWN`
 - Next action: Review the local diff and commit; PostgreSQL concurrency coverage remains a follow-up before merge.
