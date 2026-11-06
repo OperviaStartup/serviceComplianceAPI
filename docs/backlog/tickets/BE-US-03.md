@@ -5,7 +5,7 @@
 - Bounded context: `Service Planning`
 - Context type: `Supporting`
 - Sprint: `UNASSIGNED`
-- Status: `DRAFT`
+- Status: `IN_REVIEW`
 - Assignee: `UNASSIGNED`
 - Estimate: `8` points (planning baseline; refine with delivery team)
 
@@ -15,18 +15,18 @@ A valid draft becomes active and every later change remains traceable as a new i
 
 ## Acceptance criteria
 
-- [ ] AC-01: Only an authorized company administrator can activate a plan.
-- [ ] AC-02: Activation requires all mandatory plan data and at least one valid Obligation Definition.
-- [ ] AC-03: Activation records state, actor, authoritative timestamp, and an immutable version containing its definitions and requirements.
-- [ ] AC-04: Repeated activation of the same version is idempotent.
-- [ ] AC-05: A change affecting emitted obligations creates a new plan version and never rewrites historical definitions.
-- [ ] AC-06: Concurrent activation enforces the documented overlap rule for company, service, site, and validity period.
+- [x] AC-01: Only an authorized company administrator can activate a plan.
+- [x] AC-02: Activation requires all mandatory plan data and at least one valid Obligation Definition.
+- [x] AC-03: Activation records state, actor, authoritative timestamp, and an immutable version containing its definitions and requirements.
+- [x] AC-04: Repeated activation of the same version is idempotent.
+- [x] AC-05: A change affecting emitted obligations creates a new plan version and never rewrites historical definitions.
+- [x] AC-06: Concurrent activation enforces the documented overlap rule for company, service, site, and validity period.
 
 ## Dependencies
 
 | Ticket or contract | Required state | Evidence |
 | --- | --- | --- |
-| `BE-US-02` | `MERGED` | Pending verification on `develop` |
+| `BE-US-02` | `MERGED` | Verified in `origin/develop` at merge `1cf89d0` |
 
 Cross-cutting contracts in [the draft contract pack](../contracts.md) require approval wherever applicable.
 
@@ -40,9 +40,11 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 
 ## Progress evidence
 
-- Status: `DRAFT`
-- Commits: `NONE`
-- Checks: `NOT_RUN`
-- Blockers: `CONTRACTS_PENDING_APPROVAL`
-- Next action: Validate scope and contracts against current `develop`, then classify readiness.
+- Status: `IN_REVIEW`
+- Commits: `9bf8690`
+- Checks: focused `ServicePlanActivationIntegrationTests` and complete `./gradlew build` passed on
+  Java 17 (39 tests total); V10 applied to PostgreSQL 16; Hibernate validation and host startup
+  succeeded on an isolated random port.
+- Blockers: `NONE`
+- Next action: Review the final diff and merge the verified feature branch through a pull request.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.

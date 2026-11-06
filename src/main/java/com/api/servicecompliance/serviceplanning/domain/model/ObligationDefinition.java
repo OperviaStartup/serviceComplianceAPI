@@ -89,4 +89,11 @@ public class ObligationDefinition {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
+
+    public ObligationDefinition copyFor(Long newPlanId, Long actorId, Instant now) {
+        return new ObligationDefinition(newPlanId, siteId, activity, instructions, acceptanceCriteria,
+                recurrenceType, occurrenceDate, recurrenceInterval, daysOfWeek, localStartTime,
+                windowDurationMinutes, evidenceRequirements.stream().map(EvidenceRequirement::copy).toList(),
+                actorId, now);
+    }
 }
