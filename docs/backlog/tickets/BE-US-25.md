@@ -5,7 +5,7 @@
 - Bounded context: `Field Operations`
 - Context type: `Supporting`
 - Sprint: `UNASSIGNED`
-- Status: `DRAFT`
+- Status: `IN_REVIEW`
 - Assignee: `UNASSIGNED`
 - Estimate: `8` points (planning baseline; refine with delivery team)
 
@@ -26,8 +26,8 @@ Version-bound obligation instances are generated and have one eligible responsib
 
 | Ticket or contract | Required state | Evidence |
 | --- | --- | --- |
-| `BE-US-03` | `MERGED` | Pending verification on `develop` |
-| `BE-US-20` | `MERGED` | Pending verification on `develop` |
+| `BE-US-03` | `MERGED` | Present on current `develop` at merge `43e97ce` and migration reconciliation `dc671d8` |
+| `BE-US-20` | `MERGED` | Present on current `develop` at merge `4c128f0` |
 
 Cross-cutting contracts in [the draft contract pack](../contracts.md) require approval wherever applicable.
 
@@ -42,9 +42,9 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 
 ## Progress evidence
 
-- Status: `DRAFT`
-- Commits: `NONE`
-- Checks: `NOT_RUN`
-- Blockers: `CONTRACTS_PENDING_APPROVAL`
-- Next action: Validate scope and contracts against current `develop`, then classify readiness.
+- Status: `IN_REVIEW`
+- Commits: `LOCAL_FEATURE_BRANCH_PENDING_COMMIT`
+- Checks: `compileJava`, focused generation tests, full existing test suite, Flyway V13/V14 startup, and OpenAPI route verification passed
+- Blockers: `NONE_KNOWN`
+- Next action: Review the local diff and commit; PostgreSQL concurrency coverage remains a follow-up before merge.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.

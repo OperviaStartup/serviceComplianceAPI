@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 import java.time.Instant;
+import java.time.LocalDate;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -12,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface ObligationRepository extends JpaRepository<Obligation,Long> {
     List<Obligation> findByAssignedOperatorId(Long operatorId);
+    Optional<Obligation> findBySourceDefinitionIdAndOccurrenceDate(Long definitionId, LocalDate occurrenceDate);
     Optional<Obligation> findByIdAndCompanyIdAndSiteId(Long id, Long companyId, Long siteId);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from Obligation o where o.id = :id and o.companyId = :company and o.siteId = :site")

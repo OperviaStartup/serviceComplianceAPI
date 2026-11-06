@@ -60,8 +60,11 @@ The remaining schedule syntax, content allowlist, report performance target, and
    successor activation atomically marks the predecessor `SUPERSEDED`. A company-service database
    lock serializes concurrent overlap checks.
 7. **Schedules.** Approved for `BE-US-02`: structured `ONCE`, `DAILY`, and `WEEKLY` definitions,
-   inclusive plan-date validation, local time/window, and `America/Lima`. Generation horizon,
-   occurrence identity, and missed-run recovery remain for `BE-US-25`. Affected: `BE-US-02`, `03`, `25`.
+   inclusive plan-date validation, local time/window, and `America/Lima`. For `BE-US-25`, generation
+   is an explicit bounded command with `fromDate` and `toDate`, limited to the active plan period;
+   local occurrence identity is `(definitionId, occurrenceDate)`, reruns skip existing occurrences,
+   and schedule evaluation uses the definition timezone. Generated obligations retain the plan
+   business version and definition version. Affected: `BE-US-02`, `03`, `25`.
 8. **Idempotency.** Approved initial contract for `BE-US-01`: require `Idempotency-Key`, scope it
    by company, actor, and command, retain it for seven days, hash normalized semantic fields,
    replay the original resource for the same payload, and return
