@@ -45,6 +45,9 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 - Checks: focused `ServicePlanActivationIntegrationTests` and complete `./gradlew build` passed on
   Java 17 (39 tests total); V10 applied to PostgreSQL 16; Hibernate validation and host startup
   succeeded on an isolated random port.
+- Integration note: the original V10 was tested on an isolated branch database. After integration
+  with Field Operations, the same activation migration is V12; V10 and V11 belong to Field Operations.
+  Check Flyway history before applying it to any existing database.
 - Blockers: `NONE`
 - Next action: Review the final diff and merge the verified feature branch through a pull request.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.

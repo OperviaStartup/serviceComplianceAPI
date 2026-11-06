@@ -21,8 +21,8 @@ class OperatorFlowMigrationTests {
             statement.executeUpdate("INSERT INTO evidences(execution_id,type,url,created_at) VALUES ("+execution
                     +",'PHOTO','https://example.test/legacy.jpg','2029-01-01T15:00:00Z')");
         }
-        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(1);
-        flyway(schema,"latest").validate();
+        assertThat(flyway(schema,"11").migrate().migrationsExecuted).isEqualTo(1);
+        flyway(schema,"11").validate();
         try(var connection=connection(schema);var statement=connection.createStatement()) {
             try(var result=statement.executeQuery("SELECT state,result,notes,started_at,submitted_at,executed_at FROM executions WHERE id="+execution)) {
                 assertThat(result.next()).isTrue(); assertThat(result.getString("state")).isEqualTo("LEGACY");
@@ -39,7 +39,7 @@ class OperatorFlowMigrationTests {
     }
 
     @Test void freshSchemaEnforcesUniqueExecutionAndPhotoAndRejectsNullLifecycleFacts() throws Exception {
-        String schema=schema(); assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(11);
+        String schema=schema(); assertThat(flyway(schema,"11").migrate().migrationsExecuted).isEqualTo(11);
         try(var connection=connection(schema);var statement=connection.createStatement()) {
             long operator=operator(statement), obligation=obligation(statement,operator);
             String start="INSERT INTO executions(obligation_id,operator_id,state,started_at,executed_at) VALUES ("
@@ -55,6 +55,33 @@ class OperatorFlowMigrationTests {
             statement.executeUpdate(photo); rejects(statement,photo,"23505");
             rejects(statement,"UPDATE evidences SET file_size=NULL WHERE execution_id="+execution,"23514");
             rejects(statement,"UPDATE evidences SET content_type=NULL WHERE execution_id="+execution,"23514");
+        }
+    }
+
+    @Test void activationMigrationUpgradesFieldOperationsSchemaWithoutChangingEarlierMigrations() throws Exception {
+        String schema=schema();
+        assertThat(flyway(schema,"11").migrate().migrationsExecuted).isEqualTo(11);
+        long plan;
+        try (var connection=connection(schema); var statement=connection.createStatement()) {
+            long actor=operator(statement);
+            plan=id(statement,"INSERT INTO service_plans(company_id,service_id,site_id,start_date,end_date,timezone,state,created_by,created_at,updated_at) "
+                    +"VALUES (1,1,1,'2030-01-01','2030-01-31','America/Lima','DRAFT',"+actor+",CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id");
+        }
+        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(1);
+        flyway(schema,"latest").validate();
+        try (var connection=connection(schema); var statement=connection.createStatement()) {
+            try (var result=statement.executeQuery("SELECT version, success FROM flyway_schema_history WHERE version IN ('10','11','12') ORDER BY installed_rank")) {
+                assertThat(result.next()).isTrue(); assertThat(result.getString("version")).isEqualTo("10"); assertThat(result.getBoolean("success")).isTrue();
+                assertThat(result.next()).isTrue(); assertThat(result.getString("version")).isEqualTo("11"); assertThat(result.getBoolean("success")).isTrue();
+                assertThat(result.next()).isTrue(); assertThat(result.getString("version")).isEqualTo("12"); assertThat(result.getBoolean("success")).isTrue();
+                assertThat(result.next()).isFalse();
+            }
+            try (var result=statement.executeQuery("SELECT state, business_version, series_id FROM service_plans WHERE id="+plan)) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getString("state")).isEqualTo("DRAFT");
+                assertThat(result.getInt("business_version")).isEqualTo(1);
+                assertThat(result.getObject("series_id")).isNotNull();
+            }
         }
     }
 
