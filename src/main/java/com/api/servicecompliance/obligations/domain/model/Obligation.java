@@ -74,6 +74,7 @@ public class Obligation {
     public Integer getSourcePlanVersion() { return sourcePlanVersion; }
     public Long getSourceDefinitionId() { return sourceDefinitionId; }
     public Long getSourceDefinitionVersion() { return sourceDefinitionVersion; }
+    public Instant getSortAt() { return startsAt == null ? dueAt : startsAt; }
     public java.time.LocalDate getOccurrenceDate() { return occurrenceDate; }
     public String getTimezone() { return timezone == null ? TIMEZONE : timezone; }
     public long getAssignmentVersion() { return assignmentVersion; }
