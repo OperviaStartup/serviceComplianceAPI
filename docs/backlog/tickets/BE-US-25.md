@@ -15,12 +15,12 @@ Version-bound obligation instances are generated and have one eligible responsib
 
 ## Acceptance criteria
 
-- [ ] AC-01: Active definitions generate exactly one obligation per documented operational occurrence and retain the source plan/definition version.
-- [ ] AC-02: Generation uses the documented horizon, timezone, missed-run recovery, and occurrence uniqueness rule.
-- [ ] AC-03: A scoped supervisor can assign an unstarted obligation to one active eligible in-scope operator.
-- [ ] AC-04: Reassignment records previous and new operator, actor, timestamp, and reason.
-- [ ] AC-05: An obligation with an execution in progress cannot be reassigned.
-- [ ] AC-06: Inactive, unauthorized, out-of-scope, and cross-company assignees are rejected, and concurrent attempts cannot create two current assignees.
+- [x] AC-01: Active definitions generate exactly one obligation per documented operational occurrence and retain the source plan/definition version.
+- [x] AC-02: Generation uses the documented horizon, timezone, missed-run recovery, and occurrence uniqueness rule.
+- [x] AC-03: A scoped supervisor can assign an unstarted obligation to one active eligible in-scope operator.
+- [x] AC-04: Reassignment records previous and new operator, actor, timestamp, and reason.
+- [x] AC-05: An obligation with an execution in progress cannot be reassigned.
+- [x] AC-06: Inactive, unauthorized, out-of-scope, and cross-company assignees are rejected, and concurrent attempts cannot create two current assignees.
 
 ## Dependencies
 
@@ -42,9 +42,10 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 
 ## Progress evidence
 
-- Status: `IN_REVIEW`
-- Commits: `1a7ffeb`
-- Checks: `compileJava`, focused generation tests, full existing test suite, Flyway V13/V14 startup, and OpenAPI route verification passed
-- Blockers: `NONE_KNOWN`
-- Next action: Review the local diff and commit; PostgreSQL concurrency coverage remains a follow-up before merge.
+- Status: `IN_REVIEW`; readiness: `READY` for team review and integration.
+- Commits: `1a7ffeb`, `6663581`, `8884dc5`
+- Checks: focused generation and assignment tests, full Gradle test suite, Flyway V1-V14 on PostgreSQL 16, PostgreSQL concurrent reassignment, and diff hygiene passed.
+- Bounded-context check: obligation generation and assignment live under `Field Operations`; Service Planning remains the source of active plans and definitions.
+- Blockers: `NONE`
+- Next action: Push the feature branch and open the PR; mark `DONE` only after merge and verification on `develop`.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.
