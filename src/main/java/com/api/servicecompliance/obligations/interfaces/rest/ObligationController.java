@@ -2,6 +2,7 @@ package com.api.servicecompliance.obligations.interfaces.rest;
 
 import com.api.servicecompliance.authentication.application.AuthService;
 import com.api.servicecompliance.obligations.application.ObligationService;
+import com.api.servicecompliance.obligations.application.ObligationAssignmentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,7 +22,8 @@ import java.util.List;
 @SecurityRequirement(name = "bearerAuth")
 public class ObligationController {
     private final ObligationService obligations; private final AuthService auth;
-    public ObligationController(ObligationService obligations,AuthService auth){this.obligations=obligations;this.auth=auth;}
+    private final ObligationAssignmentService assignments;
+    public ObligationController(ObligationService obligations,AuthService auth,ObligationAssignmentService assignments){this.obligations=obligations;this.auth=auth;this.assignments=assignments;}
     @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasAnyRole('SUPERVISOR','ADMIN')")
     @Operation(summary = "Crear obligación", description = "Disponible para SUPERVISOR o ADMIN dentro de su empresa y sede. Para configurar el detalle de ejecución, envíe startsAt, steps y photoRequirements juntos; dueAt debe ser posterior a startsAt. El orden de las listas determina el orden de presentación.")
     @ApiResponse(responseCode = "201", description = "Obligación creada")
@@ -43,5 +45,17 @@ public class ObligationController {
     @ApiResponse(responseCode = "404", description = "Obligación inexistente o fuera de empresa/sede", content = @Content(schema = @Schema(implementation = ApiError.class)))
     public ObligationService.ObligationDetail find(@PathVariable Long id, Principal principal) {
         return obligations.find(id, auth.currentUser(principal.getName()));
+    }
+
+    @PutMapping("/{id}/assignment")
+    @PreAuthorize("hasAnyRole('SUPERVISOR','ADMIN')")
+    @Operation(summary = "Asignar o reasignar una obligación no iniciada")
+    @ApiResponse(responseCode = "200", description = "Asignación registrada")
+    @ApiResponse(responseCode = "403", description = "Operador fuera de alcance o rol no autorizado", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "409", description = "La obligación ya inició", content = @Content(schema = @Schema(implementation = ApiError.class)))
+    public ObligationAssignmentService.AssignmentResponse assign(
+            @PathVariable Long id, @Valid @RequestBody ObligationAssignmentService.AssignmentRequest request,
+            Principal principal) {
+        return assignments.assign(id, request, auth.currentUser(principal.getName()));
     }
 }
