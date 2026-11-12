@@ -6,7 +6,7 @@
 - Context type: `Supporting`
 - Sprint: `UNASSIGNED`
 - Status: `DRAFT`
-- Assignee: `UNASSIGNED`
+- Assignee: `Jean-AT`
 - Estimate: `8` points (planning baseline; refine with delivery team)
 
 ## Objective
