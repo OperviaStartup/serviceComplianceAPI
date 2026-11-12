@@ -23,4 +23,11 @@ public class ObligationAssignmentHistory {
         this.assignedAt = assignedAt;
         this.reason = reason;
     }
+
+    public Long getObligationId() { return obligationId; }
+    public Long getPreviousOperatorId() { return previousOperatorId; }
+    public Long getNewOperatorId() { return newOperatorId; }
+    public Long getActorId() { return actorId; }
+    public Instant getAssignedAt() { return assignedAt; }
+    public String getReason() { return reason; }
 }

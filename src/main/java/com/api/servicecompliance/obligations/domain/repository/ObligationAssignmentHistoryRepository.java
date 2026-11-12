@@ -3,4 +3,8 @@ package com.api.servicecompliance.obligations.domain.repository;
 import com.api.servicecompliance.obligations.domain.model.ObligationAssignmentHistory;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface ObligationAssignmentHistoryRepository extends JpaRepository<ObligationAssignmentHistory, Long> {}
+import java.util.List;
+
+public interface ObligationAssignmentHistoryRepository extends JpaRepository<ObligationAssignmentHistory, Long> {
+    List<ObligationAssignmentHistory> findAllByObligationIdOrderByAssignedAtAscIdAsc(Long obligationId);
+}

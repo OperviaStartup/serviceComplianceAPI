@@ -1,7 +1,7 @@
-package com.api.servicecompliance.serviceplanning.interfaces.rest;
+package com.api.servicecompliance.obligations.interfaces.rest;
 
 import com.api.servicecompliance.authentication.application.AuthService;
-import com.api.servicecompliance.serviceplanning.application.ObligationGenerationService;
+import com.api.servicecompliance.obligations.application.ObligationGenerationService;
 import com.api.servicecompliance.shared.web.ApiError;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;

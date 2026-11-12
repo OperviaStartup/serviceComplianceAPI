@@ -1,4 +1,4 @@
-package com.api.servicecompliance.serviceplanning.application;
+package com.api.servicecompliance.obligations.application;
 
 import com.api.servicecompliance.authentication.domain.model.User;
 import com.api.servicecompliance.obligations.domain.model.*;
