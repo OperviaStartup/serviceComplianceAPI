@@ -83,6 +83,15 @@ The remaining schedule syntax, content allowlist, report performance target, and
 ## Review, follow-up, and reporting
 
 12. **Operational status.** Define ASSIGNED/IN_PROGRESS/SUBMITTED/EXCEPTED/OVERDUE precedence, overdue boundary/timezone, and stable filter/count semantics. Affected: `BE-US-04`, `09`, `15`, `16`.
+
+    Approved `BE-US-04` refinement: preserve the legacy `GET /api/v1/obligations` array and add
+    `/api/v1/assigned-obligations` for the operator sync contract. Snapshot filters use inclusive
+    `America/Lima` dates and the approved online statuses `ASSIGNED`, `IN_PROGRESS`, `SUBMITTED`,
+    and `OVERDUE`; overdue begins at the exclusive execution-window end. Pages use an opaque,
+    filter-bound keyset ordered by operational start and obligation ID, with a maximum size of 100.
+    A separate opaque change cursor returns ordered `UPSERT` and `REMOVED` changes; reassignment
+    records removal for the former operator and upsert for the new operator. Company, site, and
+    current operator come only from the authenticated account.
 13. **Review snapshot.** Decide whether evidence freezes on submission or review returns a versioned snapshot under concurrent changes. Affected: `BE-US-10`, `11`.
 14. **Compliance Case.** Define case creation, eligible outcomes, decision criteria, reevaluation reason, append-only versions, and concurrent evaluation. Affected: `BE-US-11`, `13`, `14`.
 15. **Corrective actions.** Define eligibility, multiplicity, eligible assignees, transition matrix, verification, and target-date rules. Affected: `BE-US-12`, `21`.
@@ -114,10 +123,10 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05; decisions 1–6 and the BE-US-01 portion of decision 8,
+- Approval date and revision: 2026-11-05 through 2026-11-12; decisions 1–6, the BE-US-01 portion of decision 8,
   including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI
-  login, Stripe-backed seat rules, inclusive Lima plan dates, and seven-day plan-creation
-  idempotency.
+  login, Stripe-backed seat rules, inclusive Lima plan dates, seven-day plan-creation
+  idempotency, and the BE-US-04 assigned-work synchronization refinement of decision 12.
 - Approved references: User approval for `BE-US-17`, `BE-US-20`, and `BE-US-01`; decision 7 and
   decisions 9–18 remain pending, while later uses of decision 8 may require ticket-specific detail.
 - First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.

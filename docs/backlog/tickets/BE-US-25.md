@@ -5,7 +5,7 @@
 - Bounded context: `Field Operations`
 - Context type: `Supporting`
 - Sprint: `UNASSIGNED`
-- Status: `IN_REVIEW`
+- Status: `DONE`
 - Assignee: `Jean-AT`
 - Estimate: `8` points (planning baseline; refine with delivery team)
 
@@ -42,10 +42,11 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 
 ## Progress evidence
 
-- Status: `IN_REVIEW`; readiness: `READY` for team review and integration.
+- Status: `DONE`; merged and verified on `develop`.
 - Commits: `1a7ffeb`, `6663581`, `8884dc5`
 - Checks: focused generation and assignment tests, full Gradle test suite, Flyway V1-V14 on PostgreSQL 16, PostgreSQL concurrent reassignment, and diff hygiene passed.
 - Bounded-context check: obligation generation and assignment live under `Field Operations`; Service Planning remains the source of active plans and definitions.
 - Blockers: `NONE`
-- Next action: Push the feature branch and open the PR; mark `DONE` only after merge and verification on `develop`.
+- Integration: PR #12 merged at `8553661`; the complete 90-test suite passed on merged `develop`.
+- Next action: `NONE`; BE-US-04 consumes this merged capability.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.
