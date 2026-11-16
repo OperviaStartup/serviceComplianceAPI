@@ -9,12 +9,14 @@
 
 Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and `BE-US-20`.
 Decisions 6 and 8 were approved for `BE-US-01`; the definition-only portions of decisions 7 and 10
-were approved for `BE-US-02` on 2026-11-05. Decisions 9 and 11–18 remain draft. Preserve `/api/v1` compatibility or document a
-consumer migration path.
+were approved for `BE-US-02` on 2026-11-05. The BE-US-05 portions of decisions 8 and 9 were
+approved on 2026-11-15. Unapproved portions of decisions 7 and 9–18 remain draft. Preserve
+`/api/v1` compatibility or document a consumer migration path.
 
 ## Proposed defaults for review
 
-Decisions 1–3 below are approved with the access-token correction in the approval record. Decisions 4–18 are working proposals.
+The table below is the proposed baseline. The scoped approvals and refinements recorded in the
+sections below control where they differ.
 
 | # | Proposed decision |
 | --- | --- |
@@ -72,7 +74,20 @@ The remaining schedule syntax, content allowlist, report performance target, and
    concurrent duplicates. Later affected tickets reuse this baseline unless their offline command
    contract requires an explicitly approved extension. Affected: `BE-US-01`, `05`, `06`, `07`,
    `08`, `21`.
-9. **Execution lifecycle.** Define start, submit, exception, cancellation/retry states and transition authority; keep execution, sync, and compliance states separate. Affected: `BE-US-05`, `07`, `08`, `09`.
+
+   Approved `BE-US-05` refinement: start and submit require an `Idempotency-Key` of 8–100
+   approved characters. Scope is company, actor, and command for seven days. Start hashes the
+   obligation ID; submit hashes the execution ID and normalized notes; `expectedVersion` is not
+   semantic payload. Exact replay returns the same execution, a changed payload returns
+   `IDEMPOTENCY_KEY_MISMATCH`, and database uniqueness plus obligation locking prevents duplicate
+   business effects. The legacy `/api/v1/executions` contract remains unchanged.
+9. **Execution lifecycle.** Approved for `BE-US-05`: an assigned obligation without an Execution
+   is `NOT_STARTED`; persisted online Executions transition only `IN_PROGRESS → SUBMITTED` under
+   server authority. Submission records `COMPLETED` as the operational result, not a compliance
+   decision. Overdue, unassigned, reassigned, legacy, or already-submitted resources reject invalid
+   commands. V1 has no cancellation, reopening, or second execution attempt. Reporting an Exception
+   remains separate and leaves the Execution `IN_PROGRESS`; sync and compliance use separate state.
+   Affected: `BE-US-05`, `07`, `08`, `09`.
 10. **Evidence.** Approved definition contract for `BE-US-02`: reuse the stable evidence codes
     `PHOTO`, `QR_CODE`, `LOCATION`, and `SIGNATURE`; record required/optional status, minimum and
     maximum count, and allowlisted type-specific validation metadata. Storage, upload/download,
@@ -123,10 +138,12 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05 through 2026-11-12; decisions 1–6, the BE-US-01 portion of decision 8,
+- Approval date and revision: 2026-11-05 through 2026-11-15; decisions 1–6, the BE-US-01 and
+  BE-US-05 portions of decision 8, and the BE-US-05 portion of decision 9,
   including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI
   login, Stripe-backed seat rules, inclusive Lima plan dates, seven-day plan-creation
-  idempotency, and the BE-US-04 assigned-work synchronization refinement of decision 12.
-- Approved references: User approval for `BE-US-17`, `BE-US-20`, and `BE-US-01`; decision 7 and
-  decisions 9–18 remain pending, while later uses of decision 8 may require ticket-specific detail.
+  idempotency, the BE-US-04 assigned-work synchronization refinement of decision 12, and the
+  approved BE-US-05 online execution lifecycle.
+- Approved references: User approval for `BE-US-17`, `BE-US-20`, `BE-US-01`, and `BE-US-05`;
+  decision 7 and the remaining portions of decisions 9–18 remain pending.
 - First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.
