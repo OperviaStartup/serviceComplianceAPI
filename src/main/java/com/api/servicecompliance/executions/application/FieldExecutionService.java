@@ -229,6 +229,9 @@ public class FieldExecutionService {
                 .map(ExecutionStepProgress::getStepId).collect(Collectors.toSet());
         var attached=evidence.findByExecutionId(executionId).stream().map(Evidence::getPhotoRequirementId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, Long> evidenceCounts = evidence.findByExecutionId(executionId).stream()
+                .filter(item -> item.getEvidenceRequirementId() != null)
+                .collect(Collectors.groupingBy(Evidence::getEvidenceRequirementId, Collectors.counting()));
         var missing=new LinkedHashMap<String,List<String>>();
         if (!context.obligation().getSteps().stream().allMatch(step -> done.contains(step.getId()))) {
             missing.put("steps", List.of("deben estar marcados todos los pasos"));
@@ -236,6 +239,14 @@ public class FieldExecutionService {
         if (!context.obligation().getPhotoRequirements().stream().allMatch(p -> attached.contains(p.getId()))) {
             missing.put("photoRequirements", List.of("deben estar registradas todas las fotografías exigidas"));
         }
+        List<String> incompleteEvidence = context.obligation().getEvidenceRequirements().stream()
+                .filter(ObligationEvidenceRequirement::isRequired)
+                .filter(requirement -> evidenceCounts.getOrDefault(requirement.getId(), 0L)
+                        < requirement.getMinimumCount())
+                .map(requirement -> "requisito " + requirement.getId() + " requiere al menos "
+                        + requirement.getMinimumCount())
+                .toList();
+        if (!incompleteEvidence.isEmpty()) missing.put("evidenceRequirements", incompleteEvidence);
         if (!missing.isEmpty()) throw new FieldValidationException("La ejecución está incompleta", missing);
         Instant submittedAt=clock.instant();
         editable(context, submittedAt);
@@ -358,9 +369,13 @@ public class FieldExecutionService {
     private ExecutionView view(Obligation obligation, Execution execution) {
         Map<Long,ExecutionStepProgress> states=progress.findByExecutionId(execution.getId()).stream()
                 .collect(Collectors.toMap(ExecutionStepProgress::getStepId, Function.identity()));
-        Map<Long,Evidence> attachments=evidence.findByExecutionId(execution.getId()).stream()
+        List<Evidence> storedEvidence = evidence.findByExecutionIdOrderByCreatedAtAscIdAsc(execution.getId());
+        Map<Long,Evidence> attachments=storedEvidence.stream()
                 .filter(e -> e.getPhotoRequirementId()!=null)
                 .collect(Collectors.toMap(Evidence::getPhotoRequirementId, Function.identity()));
+        Map<Long, List<Evidence>> requirementEvidence = storedEvidence.stream()
+                .filter(item -> item.getEvidenceRequirementId() != null)
+                .collect(Collectors.groupingBy(Evidence::getEvidenceRequirementId));
         List<StepView> steps=obligation.getSteps().stream().map(step -> {
             var state=states.get(step.getId());
             return new StepView(step.getId(), step.getTitle(), step.getInstructions(), step.getPosition(),
@@ -372,13 +387,21 @@ public class FieldExecutionService {
                     photo==null ? null : photo.getId(), photo==null ? null : photo.getCreatedAt(),
                     photo==null ? null : "/api/v1/evidence/"+photo.getId()+"/content");
         }).toList();
+        List<EvidenceRequirementView> evidenceRequirements = obligation.getEvidenceRequirements().stream()
+                .map(requirement -> new EvidenceRequirementView(requirement.getId(),
+                        requirement.getSourceRequirementId(), requirement.getEvidenceType(),
+                        requirement.isRequired(), requirement.getMinimumCount(), requirement.getMaximumCount(),
+                        requirement.getPosition(), requirement.getConstraints(),
+                        requirementEvidence.getOrDefault(requirement.getId(), List.of()).stream()
+                                .map(RequiredEvidenceService::view).toList()))
+                .toList();
         boolean expired=obligation.isExpired(clock.instant());
         return new ExecutionView(execution.getId(), obligation.getId(), execution.getOperatorId(),
                 execution.getState(), expired ? ObligationStatus.OVERDUE : obligation.getStatus(),
                 execution.getResult(), execution.getStartedAt(), execution.getSubmittedAt(), obligation.getStartsAt(),
                 obligation.getDueAt(), Obligation.TIMEZONE, execution.getVersion(),
                 execution.getUpdatedAt(), execution.getState()==ExecutionState.IN_PROGRESS && !expired,
-                execution.getNotes(), steps, required,
+                execution.getNotes(), steps, required, evidenceRequirements,
                 exceptions.findByExecutionIdOrderByReportedAtAscIdAsc(execution.getId()).stream().map(e ->
                         new ExceptionView(e.getId(), e.getStepId(), e.getReason(), e.getDescription(),
                                 e.getReportedBy(), e.getReportedAt(), e.getOperationId())).toList());
@@ -394,12 +417,18 @@ public class FieldExecutionService {
     public record StepView(Long id, String title, String instructions, int position, boolean completed, Instant updatedAt) {}
     public record PhotoView(Long id, String title, String description, int position, Long evidenceId,
                              Instant uploadedAt, String contentPath) {}
+    public record EvidenceRequirementView(Long id, Long sourceRequirementId, EvidenceType type,
+                                          boolean required, int minimumCount, int maximumCount, int position,
+                                          Map<String, String> constraints,
+                                          List<RequiredEvidenceService.EvidenceView> evidence) {}
     public record ExceptionView(Long id, Long stepId, ExceptionReason reason, String description,
                                  Long reportedBy, Instant reportedAt, UUID operationId) {}
     public record ExecutionView(Long id, Long obligationId, Long operatorId, ExecutionState state,
                                  ObligationStatus obligationStatus, ExecutionResult result, Instant startedAt,
                                  Instant submittedAt, Instant startsAt, Instant dueAt, String timezone, long version,
                                  Instant updatedAt, boolean canEdit, String notes, List<StepView> steps,
-                                 List<PhotoView> photoRequirements, List<ExceptionView> exceptions) {}
+                                 List<PhotoView> photoRequirements,
+                                 List<EvidenceRequirementView> evidenceRequirements,
+                                 List<ExceptionView> exceptions) {}
     public record PhotoContent(byte[] data, String contentType) {}
 }

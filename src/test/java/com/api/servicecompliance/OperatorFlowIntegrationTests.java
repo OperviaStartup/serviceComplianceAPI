@@ -5,6 +5,10 @@ import com.api.servicecompliance.authentication.domain.repository.UserRepository
 import com.api.servicecompliance.executions.application.*;
 import com.api.servicecompliance.executions.domain.repository.*;
 import com.api.servicecompliance.obligations.domain.repository.ObligationRepository;
+import com.api.servicecompliance.obligations.domain.model.Obligation;
+import com.api.servicecompliance.obligations.domain.model.ObligationEvidenceRequirement;
+import com.api.servicecompliance.obligations.domain.model.ObligationStep;
+import com.api.servicecompliance.executions.domain.model.EvidenceType;
 import com.api.servicecompliance.shared.domain.ApiConflictException;
 import com.api.servicecompliance.shared.domain.Role;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -181,7 +185,113 @@ class OperatorFlowIntegrationTests {
                 parameter.path("name").asText().equals("Idempotency-Key") && parameter.path("required").asBoolean());
         assertThat(start.path("responses").has("409")).isTrue();
         assertThat(submit.path("responses").has("409")).isTrue();
+        JsonNode evidenceOperation=api.path("paths")
+                .path("/api/v1/executions/{id}/evidence-requirements/{requirementId}/evidence").path("post");
+        assertThat(evidenceOperation.path("parameters")).anyMatch(parameter ->
+                parameter.path("name").asText().equals("Idempotency-Key")
+                        && parameter.path("required").asBoolean());
+        assertThat(evidenceOperation.path("responses").has("409")).isTrue();
         assertThat(api.toString()).contains("updatedAt");
+    }
+
+    @Test void requiredEvidenceSupportsPrivateFilesStructuredDataAndIdempotentReplay() throws Exception {
+        obligationId=createRequiredEvidenceObligation();
+        JsonNode state=start();
+        assertThat(state.path("evidenceRequirements")).hasSize(4);
+        assertThat(state.path("evidenceRequirements").get(0).path("sourceRequirementId").asLong())
+                .isEqualTo(501L);
+
+        state=step(state,0,true);
+        JsonNode incomplete=submit(state,400);
+        assertThat(incomplete.path("details").path("evidenceRequirements")).hasSize(2);
+
+        JsonNode photoRequirement=state.path("evidenceRequirements").get(0);
+        String binaryKey="evidence-photo-"+UUID.randomUUID();
+        byte[] image=png(0xabcdef);
+        var binary=multipart("/api/v1/executions/"+state.path("id").asLong()+"/evidence-requirements/"
+                +photoRequirement.path("id").asLong()+"/evidence")
+                .file(new MockMultipartFile("file","photo.png","image/png",image))
+                .param("expectedVersion",state.path("version").asText())
+                .param("capturedAt",clock.instant().minusSeconds(60).toString())
+                .param("latitude","-12.0464").param("longitude","-77.0428")
+                .param("accuracyMeters","8.5")
+                .header("Authorization",ownerToken).header("Idempotency-Key",binaryKey);
+        JsonNode photo=response(binary,200);
+        assertThat(photo.path("type").asText()).isEqualTo("PHOTO");
+        assertThat(photo.toString()).doesNotContain("storageKey");
+        mvc.perform(get(photo.path("contentPath").asText()).header("Authorization",ownerToken))
+                .andExpect(status().isOk()).andExpect(content().bytes(image));
+        var binaryReplay=multipart("/api/v1/executions/"+state.path("id").asLong()+"/evidence-requirements/"
+                +photoRequirement.path("id").asLong()+"/evidence")
+                .file(new MockMultipartFile("file","photo.png","image/png",image))
+                .param("expectedVersion",state.path("version").asText())
+                .param("capturedAt",clock.instant().minusSeconds(60).toString())
+                .param("latitude","-12.0464").param("longitude","-77.0428")
+                .param("accuracyMeters","8.5")
+                .header("Authorization",ownerToken).header("Idempotency-Key",binaryKey);
+        assertThat(response(binaryReplay,200).path("id")).isEqualTo(photo.path("id"));
+        assertThat(storage.writes.get()).isEqualTo(1);
+        long afterPhoto=current().path("version").asLong();
+
+        JsonNode qrRequirement=current().path("evidenceRequirements").get(1);
+        String qrKey="evidence-qr-"+UUID.randomUUID();
+        ObjectNode qr=json.createObjectNode().put("textValue","OPER-123")
+                .put("capturedAt",clock.instant().toString()).put("expectedVersion",afterPhoto);
+        String qrPath="/api/v1/executions/"+state.path("id").asLong()+"/evidence-requirements/"
+                +qrRequirement.path("id").asLong()+"/evidence";
+        JsonNode created=response(post(qrPath).header("Authorization",ownerToken)
+                .header("Idempotency-Key",qrKey).contentType(MediaType.APPLICATION_JSON)
+                .content(qr.toString()),200);
+        assertThat(created.path("checksum").asText()).hasSize(64);
+        assertThat(created.path("fileSize").asLong()).isEqualTo(8L);
+        JsonNode replay=response(post(qrPath).header("Authorization",ownerToken)
+                .header("Idempotency-Key",qrKey).contentType(MediaType.APPLICATION_JSON)
+                .content(qr.toString()),200);
+        assertThat(replay.path("id")).isEqualTo(created.path("id"));
+        qr.put("textValue","OPER-CHANGED");
+        assertThat(response(post(qrPath).header("Authorization",ownerToken)
+                .header("Idempotency-Key",qrKey).contentType(MediaType.APPLICATION_JSON)
+                .content(qr.toString()),409).path("code").asText()).isEqualTo("IDEMPOTENCY_KEY_MISMATCH");
+
+        JsonNode ready=current();
+        assertThat(ready.path("evidenceRequirements").get(0).path("evidence")).hasSize(1);
+        assertThat(ready.path("evidenceRequirements").get(1).path("evidence")).hasSize(1);
+        assertThat(submit(ready,200).path("state").asText()).isEqualTo("SUBMITTED");
+    }
+
+    @Test void requiredEvidenceValidatesQrLocationLimitsAndBinaryKinds() throws Exception {
+        obligationId=createRequiredEvidenceObligation();
+        JsonNode state=start();
+        JsonNode qr=state.path("evidenceRequirements").get(1);
+        ObjectNode invalidQr=json.createObjectNode().put("textValue","WRONG-123")
+                .put("capturedAt",clock.instant().toString()).put("expectedVersion",state.path("version").asLong());
+        String qrPath="/api/v1/executions/"+state.path("id").asLong()+"/evidence-requirements/"
+                +qr.path("id").asLong()+"/evidence";
+        assertThat(response(post(qrPath).header("Authorization",ownerToken)
+                .header("Idempotency-Key","invalid-qr-"+UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(invalidQr.toString()),400)
+                .path("details").has("textValue")).isTrue();
+
+        JsonNode location=state.path("evidenceRequirements").get(2);
+        ObjectNode invalidLocation=json.createObjectNode().put("latitude",-12.0).put("longitude",-77.0)
+                .put("accuracyMeters",25).put("capturedAt",clock.instant().toString())
+                .put("expectedVersion",state.path("version").asLong());
+        String locationPath="/api/v1/executions/"+state.path("id").asLong()+"/evidence-requirements/"
+                +location.path("id").asLong()+"/evidence";
+        assertThat(response(post(locationPath).header("Authorization",ownerToken)
+                .header("Idempotency-Key","invalid-location-"+UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(invalidLocation.toString()),400)
+                .path("details").has("accuracyMeters")).isTrue();
+
+        JsonNode signature=state.path("evidenceRequirements").get(3);
+        var wrongType=multipart("/api/v1/executions/"+state.path("id").asLong()+"/evidence-requirements/"
+                +signature.path("id").asLong()+"/evidence")
+                .file(new MockMultipartFile("file","signature.jpg","image/jpeg",jpeg()))
+                .param("expectedVersion",state.path("version").asText())
+                .param("capturedAt",clock.instant().toString())
+                .header("Authorization",ownerToken).header("Idempotency-Key","invalid-signature-"+UUID.randomUUID());
+        response(wrongType,400);
+        assertThat(storage.writes.get()).isZero();
     }
 
     @Test void rejectsEarlyStartAndMutationsAtTheExactDeadline() throws Exception {
@@ -423,6 +533,22 @@ class OperatorFlowIntegrationTests {
         return response(post("/api/v1/obligations").header("Authorization",supervisorToken)
                 .contentType(MediaType.APPLICATION_JSON).content(request.toString()),201).path("id").asLong();
     }
+    private long createRequiredEvidenceObligation() {
+        List<ObligationEvidenceRequirement> requirements=List.of(
+                new ObligationEvidenceRequirement(501L,EvidenceType.PHOTO,true,1,2,1,
+                        Map.of("requireGeolocation","true","maxAgeMinutes","30")),
+                new ObligationEvidenceRequirement(502L,EvidenceType.QR_CODE,true,1,1,2,
+                        Map.of("expectedPrefix","OPER-")),
+                new ObligationEvidenceRequirement(503L,EvidenceType.LOCATION,false,0,1,3,
+                        Map.of("maxAccuracyMeters","10")),
+                new ObligationEvidenceRequirement(504L,EvidenceType.SIGNATURE,false,0,1,4,
+                        Map.of("signerLabel","Supervisor")));
+        Obligation obligation=Obligation.configured("Required evidence","Inspect area","Site",START,END,
+                1L,1L,
+                List.of(new ObligationStep("Inspect","Follow instructions",1)),requirements);
+        obligation.assignTo(owner.getId());
+        return obligations.saveAndFlush(obligation).getId();
+    }
     private String startOutcome(long targetObligation,String key) {
         try { return "STARTED:"+flow.start(targetObligation,key,owner).execution().id(); }
         catch(ApiConflictException exception) { return exception.getCode(); }
@@ -467,6 +593,10 @@ class OperatorFlowIntegrationTests {
     private static byte[] png(int color) throws Exception {
         var image=new BufferedImage(1,1,BufferedImage.TYPE_INT_RGB); image.setRGB(0,0,color);
         var out=new ByteArrayOutputStream(); ImageIO.write(image,"png",out); return out.toByteArray();
+    }
+    private static byte[] jpeg() throws Exception {
+        var image=new BufferedImage(1,1,BufferedImage.TYPE_INT_RGB);
+        var out=new ByteArrayOutputStream(); ImageIO.write(image,"jpeg",out); return out.toByteArray();
     }
 
     @TestConfiguration static class Fixtures {

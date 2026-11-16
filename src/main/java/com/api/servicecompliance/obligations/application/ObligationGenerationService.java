@@ -62,18 +62,19 @@ public class ObligationGenerationService {
                 Instant dueAt = startsAt.plus(definition.getWindowDurationMinutes(), ChronoUnit.MINUTES);
                 List<ObligationStep> steps = List.of(new ObligationStep(definition.getActivity(),
                         definition.getInstructions(), 1));
-                List<ObligationPhotoRequirement> photos = new ArrayList<>();
+                List<ObligationEvidenceRequirement> evidenceRequirements = new ArrayList<>();
                 int position = 1;
                 for (EvidenceRequirement requirement : definition.getEvidenceRequirements()) {
-                    if (requirement.getEvidenceType() == EvidenceRequirementType.PHOTO && requirement.isRequired()) {
-                        photos.add(new ObligationPhotoRequirement("Photo requirement " + position,
-                                "Generated from the service-plan definition", position++));
-                    }
+                    evidenceRequirements.add(new ObligationEvidenceRequirement(requirement.getId(),
+                            com.api.servicecompliance.executions.domain.model.EvidenceType.valueOf(
+                                    requirement.getEvidenceType().name()), requirement.isRequired(),
+                            requirement.getMinimumCount(), requirement.getMaximumCount(), position++,
+                            requirement.getConstraints()));
                 }
-                Obligation obligation = new Obligation(definition.getActivity(), definition.getInstructions(),
+                Obligation obligation = Obligation.generated(definition.getActivity(), definition.getInstructions(),
                         "Site " + plan.getSiteId(), startsAt, dueAt, plan.getCompanyId(), plan.getSiteId(),
                         plan.getId(), plan.getBusinessVersion(), definition.getId(), definition.getVersion(),
-                        date, steps, photos);
+                        date, steps, evidenceRequirements);
                 Obligation saved = obligations.saveAndFlush(obligation);
                 created.add(new GeneratedObligation(saved.getId(), definition.getId(), date, saved.getStartsAt(), saved.getDueAt()));
                 generated++;
