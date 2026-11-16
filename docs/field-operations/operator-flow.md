@@ -22,13 +22,13 @@ Todas llevan prefijo `/api/v1` y usan `Authorization: Bearer <token>`.
 
 | Método y ruta | Solicitud | Respuesta |
 | --- | --- | --- |
-| POST `/obligations/{id}/execution` | Sin cuerpo. | `201` al iniciar; `200` al repetir, con la misma ejecución. |
+| POST `/obligations/{id}/execution` | Cabecera `Idempotency-Key`; sin cuerpo. | `201` al iniciar; `200` al repetir la misma operación, con la misma ejecución. |
 | GET `/obligations/{id}/execution` | Sin cuerpo. | `200`, ejecución actual con todo su avance; `404` si no ha iniciado. |
 | GET `/executions/{id}/flow` | Sin cuerpo. | La misma vista completa por ID de ejecución. |
 | PUT `/executions/{id}/steps/{stepId}` | `{ completed, expectedVersion }` | Vista completa con el paso actualizado. |
 | POST `/executions/{id}/exceptions` | Motivo, descripción, operación y versión; paso opcional. | Vista completa con el impedimento conservado. |
 | POST `/executions/{id}/photo-requirements/{requirementId}/photo` | Multipart: `file`, `expectedVersion`; `capturedAt` opcional. | Vista completa tras almacenar realmente el archivo. |
-| POST `/executions/{id}/submit` | `{ expectedVersion, notes? }` | Vista enviada, validada por el servidor. |
+| POST `/executions/{id}/submit` | Cabecera `Idempotency-Key`; `{ expectedVersion, notes? }` | Vista enviada, validada por el servidor. |
 | GET `/evidence/{id}/content` | Sin cuerpo. | Bytes JPEG/PNG privados, con autorización y `Cache-Control: no-store`. |
 
 Los IDs del listado, del detalle y de cada respuesta se reutilizan en la siguiente operación.
@@ -79,6 +79,12 @@ transacción. No se reabre una ejecución ni se concede una ampliación de plazo
 
 ## Inicio, progreso y concurrencia
 
+- Inicio y envío requieren una `Idempotency-Key` de 8 a 100 caracteres alfanuméricos o
+  `. _ : -`. La clave se limita por empresa, operario y comando durante siete días.
+- En inicio, la obligación forma el contenido semántico; en envío lo forman la ejecución y las
+  notas normalizadas. `expectedVersion` no forma parte de ese contenido. El mismo contenido
+  devuelve la ejecución original; cambiarlo con la misma clave devuelve
+  `IDEMPOTENCY_KEY_MISMATCH`.
 - Se crea una única ejecución por obligación configurada. Los reintentos devuelven su identidad
   y progreso existentes; no reinician ni duplican los pasos.
 - Los pasos pueden marcarse y desmarcarse mientras la ejecución esté abierta y dentro del plazo.
@@ -182,6 +188,9 @@ En las configuradas se rechaza el POST antiguo de resultado con
 `EXECUTION_LIFECYCLE_REQUIRED`, y en las ejecuciones nuevas se rechaza el POST de URLs con
 `PHOTO_UPLOAD_REQUIRED`. Así no pueden usarse para saltarse pasos/fotos.
 
+El cliente del flujo nuevo debe migrar inicio y envío para incluir `Idempotency-Key`. Omitirla
+devuelve `400 VALIDATION_ERROR`. El endpoint legacy `POST /api/v1/executions` no cambia.
+
 Si una obligación tiene registros históricos, el flujo nuevo devuelve `LEGACY_EXECUTION`;
 no crea otra ejecución ni reinterpreta un historial ambiguo. Para esta entrega se preparan
 obligaciones nuevas con su configuración explícita.
@@ -200,6 +209,8 @@ Una ejecución incompleta devuelve `400 VALIDATION_ERROR` con `details.steps` y/
 V11 conserva los datos históricos y agrega ciclo/versión a `executions`,
 `execution_step_progress`, `operational_exceptions` y metadatos privados en `evidences`.
 No cambia V1–V10, usuarios, pertenencias a centros ni las tablas de Service Planning.
+V16 agrega referencias idempotentes de siete días para inicio y envío, sin guardar tokens ni
+contenido sensible y con eliminación en cascada al eliminar una ejecución.
 
 ```mermaid
 erDiagram

@@ -67,7 +67,7 @@ class OperatorFlowMigrationTests {
             plan=id(statement,"INSERT INTO service_plans(company_id,service_id,site_id,start_date,end_date,timezone,state,created_by,created_at,updated_at) "
                     +"VALUES (1,1,1,'2030-01-01','2030-01-31','America/Lima','DRAFT',"+actor+",CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id");
         }
-        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(5);
         flyway(schema,"latest").validate();
         try (var connection=connection(schema); var statement=connection.createStatement()) {
             try (var result=statement.executeQuery("SELECT version, success FROM flyway_schema_history WHERE version IN ('10','11','12') ORDER BY installed_rank")) {
@@ -81,6 +81,32 @@ class OperatorFlowMigrationTests {
                 assertThat(result.getString("state")).isEqualTo("DRAFT");
                 assertThat(result.getInt("business_version")).isEqualTo(1);
                 assertThat(result.getObject("series_id")).isNotNull();
+            }
+        }
+    }
+
+    @Test void executionIdempotencyMigrationEnforcesScopeAndCascadesWithExecution() throws Exception {
+        String schema=schema(); assertThat(flyway(schema,"15").migrate().migrationsExecuted).isEqualTo(15);
+        long execution;
+        try(var connection=connection(schema);var statement=connection.createStatement()) {
+            long operator=operator(statement), obligation=obligation(statement,operator);
+            execution=id(statement,"INSERT INTO executions(obligation_id,operator_id,state,started_at,executed_at,updated_at) VALUES ("
+                    +obligation+","+operator+",'IN_PROGRESS','2030-01-01T15:00:00Z','2030-01-01T15:00:00Z','2030-01-01T15:00:00Z') RETURNING id");
+        }
+        assertThat(flyway(schema,"16").migrate().migrationsExecuted).isEqualTo(1);
+        flyway(schema,"16").validate();
+        try(var connection=connection(schema);var statement=connection.createStatement()) {
+            long operator;
+            try(var result=statement.executeQuery("SELECT operator_id FROM executions WHERE id="+execution)) {
+                assertThat(result.next()).isTrue(); operator=result.getLong(1);
+            }
+            String record="INSERT INTO execution_idempotency(company_id,actor_id,command,idempotency_key,request_hash,execution_id,created_at,expires_at) VALUES "
+                    +"(1,"+operator+",'START_EXECUTION','start-migration-key','"+"a".repeat(64)+"',"+execution
+                    +",CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '7 days')";
+            statement.executeUpdate(record); rejects(statement,record,"23505");
+            statement.executeUpdate("DELETE FROM executions WHERE id="+execution);
+            try(var result=statement.executeQuery("SELECT count(*) FROM execution_idempotency WHERE execution_id="+execution)) {
+                assertThat(result.next()).isTrue(); assertThat(result.getLong(1)).isZero();
             }
         }
     }
