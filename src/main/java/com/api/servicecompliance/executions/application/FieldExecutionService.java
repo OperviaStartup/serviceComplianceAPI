@@ -1,6 +1,7 @@
 package com.api.servicecompliance.executions.application;
 
 import com.api.servicecompliance.authentication.domain.model.User;
+import com.api.servicecompliance.authentication.domain.repository.UserRepository;
 import com.api.servicecompliance.executions.domain.model.*;
 import com.api.servicecompliance.executions.domain.repository.*;
 import com.api.servicecompliance.obligations.domain.model.*;
@@ -17,17 +18,28 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 @Service
 @Transactional
 public class FieldExecutionService {
     private static final Logger LOG = LoggerFactory.getLogger(FieldExecutionService.class);
+    private static final String START_EXECUTION = "START_EXECUTION";
+    private static final String SUBMIT_EXECUTION = "SUBMIT_EXECUTION";
+    private static final Duration IDEMPOTENCY_RETENTION = Duration.ofDays(7);
+    private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("[A-Za-z0-9._:-]{8,100}");
     private final ObligationRepository obligations;
     private final ExecutionRepository executions;
+    private final ExecutionIdempotencyRepository idempotency;
+    private final UserRepository users;
     private final ExecutionStepProgressRepository progress;
     private final EvidenceRepository evidence;
     private final OperationalExceptionRepository exceptions;
@@ -36,25 +48,46 @@ public class FieldExecutionService {
     private final Clock clock;
 
     public FieldExecutionService(ObligationRepository obligations, ExecutionRepository executions,
+                                 ExecutionIdempotencyRepository idempotency,
+                                 UserRepository users,
                                  ExecutionStepProgressRepository progress, EvidenceRepository evidence,
                                  OperationalExceptionRepository exceptions, PhotoStorage storage,
                                  PhotoValidator photos, Clock clock) {
-        this.obligations=obligations; this.executions=executions; this.progress=progress;
+        this.obligations=obligations; this.executions=executions; this.idempotency=idempotency; this.users=users;
+        this.progress=progress;
         this.evidence=evidence; this.exceptions=exceptions; this.storage=storage; this.photos=photos; this.clock=clock;
     }
 
-    public StartResponse start(Long obligationId, User actor) {
+    public StartResponse start(Long obligationId, String idempotencyKey, User actor) {
+        lockActor(actor);
         Obligation obligation = scopedObligation(obligationId, actor, true);
+        validateIdempotencyKey(idempotencyKey);
+        Instant now=clock.instant();
+        idempotency.deleteByExpiresAtBefore(now);
+        String requestHash=hash(String.valueOf(obligationId));
+        Optional<Execution> replay=replay(actor, START_EXECUTION, idempotencyKey, requestHash);
+        if (replay.isPresent()) {
+            Execution execution=replay.get();
+            if (!execution.getObligationId().equals(obligationId)) {
+                throw conflict("IDEMPOTENCY_KEY_MISMATCH", "La clave ya fue usada con otra solicitud");
+            }
+            checkOwner(execution, actor);
+            return new StartResponse(view(obligation, execution), false);
+        }
         List<Execution> existing=executions.findByObligationId(obligationId);
         if (!existing.isEmpty()) {
             Execution execution=single(existing);
             checkOwner(execution, actor);
+            if (execution.getState()!=ExecutionState.IN_PROGRESS
+                    || idempotency.existsByExecutionIdAndCommand(execution.getId(), START_EXECUTION)) {
+                throw conflict("EXECUTION_ALREADY_STARTED", "La obligación ya tiene una ejecución iniciada");
+            }
+            record(actor, START_EXECUTION, idempotencyKey, requestHash, execution.getId(), now);
             return new StartResponse(view(obligation, execution), false);
         }
         if (obligation.getStartsAt()==null || obligation.getSteps().isEmpty()) {
             throw conflict("EXECUTION_NOT_CONFIGURED", "La obligación no tiene configurado su detalle de ejecución");
         }
-        Instant now=clock.instant();
         window(obligation, now);
         if (obligation.getStatus()!=ObligationStatus.ASSIGNED) {
             throw conflict("INVALID_EXECUTION_STATE", "La obligación no puede iniciarse");
@@ -63,6 +96,7 @@ public class FieldExecutionService {
         progress.saveAll(obligation.getSteps().stream()
                 .map(step -> new ExecutionStepProgress(execution.getId(), step.getId(), now)).toList());
         obligation.markInProgress();
+        record(actor, START_EXECUTION, idempotencyKey, requestHash, execution.getId(), now);
         executions.flush();
         return new StartResponse(view(obligation, execution), true);
     }
@@ -166,14 +200,28 @@ public class FieldExecutionService {
         return view(context.obligation(), context.execution());
     }
 
-    public ExecutionView submit(Long executionId, SubmitCommand command, User actor) {
+    public ExecutionView submit(Long executionId, String idempotencyKey, SubmitCommand command, User actor) {
+        lockActor(actor);
         Context context=context(executionId, actor, true);
+        validateIdempotencyKey(idempotencyKey);
         String notes=command.notes()==null || command.notes().isBlank() ? null : command.notes().trim();
-        if (context.execution().getState()==ExecutionState.SUBMITTED) {
-            if (!Objects.equals(notes, context.execution().getNotes())) {
-                throw conflict("EXECUTION_ALREADY_SUBMITTED", "La ejecución ya fue enviada y no puede modificarse");
+        Instant now=clock.instant();
+        idempotency.deleteByExpiresAtBefore(now);
+        String requestHash=hash(executionId+"|"+(notes==null ? "" : notes));
+        Optional<Execution> replay=replay(actor, SUBMIT_EXECUTION, idempotencyKey, requestHash);
+        if (replay.isPresent()) {
+            if (!replay.get().getId().equals(executionId)) {
+                throw conflict("IDEMPOTENCY_KEY_MISMATCH", "La clave ya fue usada con otra solicitud");
             }
-            return view(context.obligation(), context.execution());
+            return view(context.obligation(), replay.get());
+        }
+        if (context.execution().getState()==ExecutionState.SUBMITTED) {
+            if (!idempotency.existsByExecutionIdAndCommand(executionId, SUBMIT_EXECUTION)
+                    && Objects.equals(notes, context.execution().getNotes())) {
+                record(actor, SUBMIT_EXECUTION, idempotencyKey, requestHash, executionId, now);
+                return view(context.obligation(), context.execution());
+            }
+            throw conflict("EXECUTION_ALREADY_SUBMITTED", "La ejecución ya fue enviada y no puede modificarse");
         }
         editable(context);
         version(context.execution(), command.expectedVersion());
@@ -193,6 +241,7 @@ public class FieldExecutionService {
         editable(context, submittedAt);
         context.execution().submit(notes, submittedAt);
         context.obligation().markSubmitted();
+        record(actor, SUBMIT_EXECUTION, idempotencyKey, requestHash, executionId, submittedAt);
         executions.flush();
         return view(context.obligation(), context.execution());
     }
@@ -210,7 +259,8 @@ public class FieldExecutionService {
     private Obligation scopedObligation(Long id, User actor, boolean ownerOnly) {
         Obligation obligation=obligations.lockInScope(id, actor.getCompanyId(), actor.getSiteId())
                 .orElseThrow(() -> new ResourceNotFoundException("Obligación no encontrada"));
-        boolean owner=actor.getRole()==Role.OPERATOR && obligation.getAssignedOperatorId().equals(actor.getId());
+        boolean owner=actor.getRole()==Role.OPERATOR
+                && Objects.equals(obligation.getAssignedOperatorId(), actor.getId());
         if ((ownerOnly && !owner) || (actor.getRole()==Role.OPERATOR && !owner)) {
             throw new AccessDeniedException("Forbidden");
         }
@@ -261,6 +311,44 @@ public class FieldExecutionService {
     }
     private ApiConflictException conflict(String code, String message) { return new ApiConflictException(code, message); }
 
+    private void lockActor(User actor) {
+        users.lockById(actor.getId()).orElseThrow(() -> new AccessDeniedException("Actor unavailable"));
+    }
+
+    private Optional<Execution> replay(User actor, String command, String key, String requestHash) {
+        return idempotency.findByCompanyIdAndActorIdAndCommandAndIdempotencyKey(
+                        actor.getCompanyId(), actor.getId(), command, key)
+                .map(record -> {
+                    if (!record.getRequestHash().equals(requestHash)) {
+                        throw conflict("IDEMPOTENCY_KEY_MISMATCH", "La clave ya fue usada con otra solicitud");
+                    }
+                    return executions.findById(record.getExecutionId())
+                            .orElseThrow(() -> new IllegalStateException("Idempotency record without execution"));
+                });
+    }
+
+    private void record(User actor, String command, String key, String requestHash,
+                        Long executionId, Instant now) {
+        idempotency.saveAndFlush(new ExecutionIdempotency(actor.getCompanyId(), actor.getId(), command,
+                key, requestHash, executionId, now, now.plus(IDEMPOTENCY_RETENTION)));
+    }
+
+    private static void validateIdempotencyKey(String key) {
+        if (key==null || !IDEMPOTENCY_KEY.matcher(key).matches()) {
+            throw new FieldValidationException("Datos inválidos", Map.of("idempotencyKey", List.of(
+                    "debe contener entre 8 y 100 caracteres alfanuméricos o . _ : -")));
+        }
+    }
+
+    private static String hash(String canonical) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
     private void checkOwner(Execution execution, User actor) {
         if (actor.getRole()==Role.OPERATOR && !execution.getOperatorId().equals(actor.getId())) {
             throw new AccessDeniedException("Forbidden");
@@ -289,7 +377,8 @@ public class FieldExecutionService {
                 execution.getState(), expired ? ObligationStatus.OVERDUE : obligation.getStatus(),
                 execution.getResult(), execution.getStartedAt(), execution.getSubmittedAt(), obligation.getStartsAt(),
                 obligation.getDueAt(), Obligation.TIMEZONE, execution.getVersion(),
-                execution.getState()==ExecutionState.IN_PROGRESS && !expired, execution.getNotes(), steps, required,
+                execution.getUpdatedAt(), execution.getState()==ExecutionState.IN_PROGRESS && !expired,
+                execution.getNotes(), steps, required,
                 exceptions.findByExecutionIdOrderByReportedAtAscIdAsc(execution.getId()).stream().map(e ->
                         new ExceptionView(e.getId(), e.getStepId(), e.getReason(), e.getDescription(),
                                 e.getReportedBy(), e.getReportedAt(), e.getOperationId())).toList());
@@ -310,7 +399,7 @@ public class FieldExecutionService {
     public record ExecutionView(Long id, Long obligationId, Long operatorId, ExecutionState state,
                                  ObligationStatus obligationStatus, ExecutionResult result, Instant startedAt,
                                  Instant submittedAt, Instant startsAt, Instant dueAt, String timezone, long version,
-                                 boolean canEdit, String notes, List<StepView> steps,
+                                 Instant updatedAt, boolean canEdit, String notes, List<StepView> steps,
                                  List<PhotoView> photoRequirements, List<ExceptionView> exceptions) {}
     public record PhotoContent(byte[] data, String contentType) {}
 }

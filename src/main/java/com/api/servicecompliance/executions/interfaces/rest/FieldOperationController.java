@@ -2,7 +2,9 @@ package com.api.servicecompliance.executions.interfaces.rest;
 
 import com.api.servicecompliance.authentication.application.AuthService;
 import com.api.servicecompliance.executions.application.FieldExecutionService;
+import com.api.servicecompliance.shared.web.ApiError;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -31,9 +33,19 @@ public class FieldOperationController {
 
     @PostMapping("/obligations/{id}/execution")
     @PreAuthorize("hasRole('OPERATOR')")
-    @Operation(summary="Iniciar la única ejecución de una obligación", description="201 al iniciar; 200 en un reintento sin crear otra ejecución. La ventana es [startsAt,dueAt).")
-    public ResponseEntity<FieldExecutionService.ExecutionView> start(@PathVariable Long id, Principal principal) {
-        var result=executions.start(id, auth.currentUser(principal.getName()));
+    @Operation(summary="Iniciar la única ejecución de una obligación", description="Requiere Idempotency-Key. Devuelve 201 al iniciar y 200 para el replay exacto. La ventana es [startsAt,dueAt).")
+    @ApiResponse(responseCode="201", description="Ejecución iniciada")
+    @ApiResponse(responseCode="200", description="Replay idempotente de la ejecución")
+    @ApiResponse(responseCode="400", description="Clave idempotente inválida", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="403", description="El operador no tiene asignada la obligación", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="404", description="Obligación fuera del alcance", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="409", description="Estado, ventana o replay incompatible", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    public ResponseEntity<FieldExecutionService.ExecutionView> start(
+            @PathVariable Long id,
+            @Parameter(required=true, description="Clave de 8 a 100 caracteres para iniciar esta ejecución")
+            @RequestHeader(value="Idempotency-Key", required=false) String idempotencyKey,
+            Principal principal) {
+        var result=executions.start(id, idempotencyKey, auth.currentUser(principal.getName()));
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.execution());
     }
 
@@ -78,10 +90,18 @@ public class FieldOperationController {
 
     @PostMapping("/executions/{id}/submit")
     @PreAuthorize("hasRole('OPERATOR')")
-    @Operation(summary="Enviar la ejecución completa", description="Valida todos los pasos y fotos, fecha límite y expectedVersion. El servidor determina COMPLETED y SUBMITTED; no registra una evaluación de cumplimiento.")
-    public FieldExecutionService.ExecutionView submit(@PathVariable Long id,
+    @Operation(summary="Enviar la ejecución completa", description="Requiere Idempotency-Key. Valida todos los pasos, fotos, fecha límite y expectedVersion. El servidor determina COMPLETED y SUBMITTED; no registra una evaluación de cumplimiento.")
+    @ApiResponse(responseCode="200", description="Ejecución enviada o replay exacto")
+    @ApiResponse(responseCode="400", description="Solicitud incompleta o clave inválida", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="403", description="El operador no es propietario", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="404", description="Ejecución fuera del alcance", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="409", description="Versión, estado o replay incompatible", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    public FieldExecutionService.ExecutionView submit(
+            @PathVariable Long id,
+            @Parameter(required=true, description="Clave de 8 a 100 caracteres para enviar esta ejecución")
+            @RequestHeader(value="Idempotency-Key", required=false) String idempotencyKey,
             @Valid @RequestBody FieldExecutionService.SubmitCommand command, Principal principal) {
-        return executions.submit(id, command, auth.currentUser(principal.getName()));
+        return executions.submit(id, idempotencyKey, command, auth.currentUser(principal.getName()));
     }
 
     @GetMapping("/evidence/{id}/content")

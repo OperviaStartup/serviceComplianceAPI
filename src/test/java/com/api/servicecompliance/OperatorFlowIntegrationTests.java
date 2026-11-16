@@ -56,12 +56,14 @@ class OperatorFlowIntegrationTests {
     private final List<User> fixtureUsers=new ArrayList<>();
     private User owner, other, supervisor, foreign;
     private String ownerToken, supervisorToken;
+    private String startKey, submitKey;
     private long obligationId;
     private static final Instant START=Instant.parse("2030-01-01T15:00:00Z");
     private static final Instant END=START.plusSeconds(1800);
 
     @BeforeEach void setUp() throws Exception {
         clock.set(START.plusSeconds(300)); storage.reset();
+        startKey="start-"+UUID.randomUUID(); submitKey="submit-"+UUID.randomUUID();
         try(var c=jdbc.getDataSource().getConnection()) {
             if(c.getMetaData().getDatabaseProductName().contains("PostgreSQL")) {
                 jdbc.update("INSERT INTO companies (id,name) VALUES (2,'Test company') ON CONFLICT(id) DO NOTHING");
@@ -71,15 +73,7 @@ class OperatorFlowIntegrationTests {
         owner=user(Role.OPERATOR,1L,1L); other=user(Role.OPERATOR,1L,1L);
         supervisor=user(Role.SUPERVISOR,1L,1L); foreign=user(Role.OPERATOR,2L,2L);
         ownerToken=token(owner); supervisorToken=token(supervisor);
-        ObjectNode request=json.createObjectNode().put("title","Reception").put("description","Clean reception")
-                .put("siteName","Site").put("assignedOperatorId",owner.getId())
-                .put("startsAt",START.toString()).put("dueAt",END.toString());
-        request.putArray("steps").addObject().put("title","Floor");
-        request.withArray("steps").addObject().put("title","Desk");
-        request.putArray("photoRequirements").addObject().put("title","Finished floor");
-        request.withArray("photoRequirements").addObject().put("title","Finished desk");
-        obligationId=response(post("/api/v1/obligations").header("Authorization",supervisorToken)
-                .contentType(MediaType.APPLICATION_JSON).content(request.toString()),201).path("id").asLong();
+        obligationId=createObligation("Reception");
     }
 
     @AfterEach void clean() {
@@ -136,16 +130,64 @@ class OperatorFlowIntegrationTests {
     @Test void startIsUniqueRecoverableAndDoesNotDuplicateProgress() throws Exception {
         JsonNode state=start();
         state=step(state,0,true);
-        JsonNode replay=response(post(startPath()).header("Authorization",ownerToken),200);
+        JsonNode replay=response(post(startPath()).header("Authorization",ownerToken)
+                .header("Idempotency-Key",startKey),200);
         assertThat(replay.path("id")).isEqualTo(state.path("id"));
         assertThat(replay.path("steps").get(0).path("completed").asBoolean()).isTrue();
         assertThat(executions.findByObligationId(obligationId)).hasSize(1);
         assertThat(progress.findByExecutionId(state.path("id").asLong())).hasSize(2);
+        assertThat(response(post(startPath()).header("Authorization",ownerToken)
+                .header("Idempotency-Key","start-another-key"),409).path("code").asText())
+                .isEqualTo("EXECUTION_ALREADY_STARTED");
+    }
+
+    @Test void startAndSubmitRequireIdempotencyKeysAndRejectChangedReplayPayloads() throws Exception {
+        JsonNode missing=response(post(startPath()).header("Authorization",ownerToken),400);
+        assertThat(missing.path("details").path("idempotencyKey").isArray()).isTrue();
+        JsonNode state=start();
+        assertThat(state.path("updatedAt").asText()).isEqualTo(state.path("startedAt").asText());
+        assertThat(response(post("/api/v1/executions/"+state.path("id").asLong()+"/submit")
+                .header("Authorization",ownerToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":"+state.path("version").asLong()+"}"),400)
+                .path("details").path("idempotencyKey").isArray()).isTrue();
+        state=step(state,0,true); state=step(state,1,true);
+        state=upload(state,0,png(1)); state=upload(state,1,png(2));
+        JsonNode submitted=submitRequest(state,submitKey,"Original notes",200);
+        JsonNode replay=submitRequest(state,submitKey,"Original notes",200);
+        assertThat(replay.path("id")).isEqualTo(submitted.path("id"));
+        assertThat(replay.path("submittedAt")).isEqualTo(submitted.path("submittedAt"));
+        assertThat(submitRequest(state,submitKey,"Changed notes",409).path("code").asText())
+                .isEqualTo("IDEMPOTENCY_KEY_MISMATCH");
+    }
+
+    @Test void unassignedObligationRejectsStartWithoutThrowingAnInternalError() throws Exception {
+        jdbc.update("UPDATE obligations SET assigned_operator_id=NULL WHERE id=?",obligationId);
+        try {
+            assertThat(response(post(startPath()).header("Authorization",ownerToken)
+                    .header("Idempotency-Key",startKey),403).path("code").asText()).isEqualTo("FORBIDDEN");
+            assertThat(executions.findByObligationId(obligationId)).isEmpty();
+        } finally {
+            jdbc.update("UPDATE obligations SET assigned_operator_id=? WHERE id=?",owner.getId(),obligationId);
+        }
+    }
+
+    @Test void openApiDocumentsExecutionIdempotencyAndAuditFields() throws Exception {
+        JsonNode api=response(get("/api-docs"),200);
+        JsonNode start=api.path("paths").path("/api/v1/obligations/{id}/execution").path("post");
+        JsonNode submit=api.path("paths").path("/api/v1/executions/{id}/submit").path("post");
+        assertThat(start.path("parameters")).anyMatch(parameter ->
+                parameter.path("name").asText().equals("Idempotency-Key") && parameter.path("required").asBoolean());
+        assertThat(submit.path("parameters")).anyMatch(parameter ->
+                parameter.path("name").asText().equals("Idempotency-Key") && parameter.path("required").asBoolean());
+        assertThat(start.path("responses").has("409")).isTrue();
+        assertThat(submit.path("responses").has("409")).isTrue();
+        assertThat(api.toString()).contains("updatedAt");
     }
 
     @Test void rejectsEarlyStartAndMutationsAtTheExactDeadline() throws Exception {
         clock.set(START.minusNanos(1));
-        assertThat(response(post(startPath()).header("Authorization",ownerToken),409).path("code").asText())
+        assertThat(response(post(startPath()).header("Authorization",ownerToken)
+                .header("Idempotency-Key",startKey),409).path("code").asText())
                 .isEqualTo("EXECUTION_NOT_STARTED_YET");
         clock.set(START); JsonNode state=start();
         clock.set(END);
@@ -163,7 +205,8 @@ class OperatorFlowIntegrationTests {
 
     @Test void rejectsStartingAnUnstartedExpiredObligation() throws Exception {
         clock.set(END);
-        assertThat(response(post(startPath()).header("Authorization",ownerToken),409).path("code").asText())
+        assertThat(response(post(startPath()).header("Authorization",ownerToken)
+                .header("Idempotency-Key",startKey),409).path("code").asText())
                 .isEqualTo("OBLIGATION_OVERDUE");
         assertThat(executions.findByObligationId(obligationId)).isEmpty();
     }
@@ -258,9 +301,9 @@ class OperatorFlowIntegrationTests {
     }
 
     @Test void protectsMutationsAndDoesNotAllowForeignStepsOrPhotoRequirements() throws Exception {
-        response(post(startPath()).header("Authorization",supervisorToken),403);
-        response(post(startPath()).header("Authorization",token(other)),403);
-        response(post(startPath()).header("Authorization",token(foreign)),404);
+        response(post(startPath()).header("Authorization",supervisorToken).header("Idempotency-Key",startKey),403);
+        response(post(startPath()).header("Authorization",token(other)).header("Idempotency-Key",startKey),403);
+        response(post(startPath()).header("Authorization",token(foreign)).header("Idempotency-Key",startKey),404);
         JsonNode state=start();
         response(put("/api/v1/executions/"+state.path("id").asLong()+"/steps/9223372036854775807")
                 .header("Authorization",ownerToken).contentType(MediaType.APPLICATION_JSON)
@@ -292,10 +335,21 @@ class OperatorFlowIntegrationTests {
     }
 
     @Test void concurrentStartsCreateOneExecution() throws Exception {
-        var ids=concurrently(() -> flow.start(obligationId,owner).execution().id(),
-                () -> flow.start(obligationId,owner).execution().id());
+        var ids=concurrently(() -> flow.start(obligationId,startKey,owner).execution().id(),
+                () -> flow.start(obligationId,startKey,owner).execution().id());
         assertThat(ids.get(0)).isEqualTo(ids.get(1));
         assertThat(executions.findByObligationId(obligationId)).hasSize(1);
+    }
+
+    @Test void concurrentReuseOfAKeyWithDifferentObligationsReturnsPayloadMismatch() throws Exception {
+        long secondObligation=createObligation("Second reception");
+        String sharedKey="start-shared-"+UUID.randomUUID();
+        var outcomes=concurrently(() -> startOutcome(obligationId,sharedKey),
+                () -> startOutcome(secondObligation,sharedKey));
+        assertThat(outcomes).filteredOn(value -> value.startsWith("STARTED:")).hasSize(1);
+        assertThat(outcomes).filteredOn("IDEMPOTENCY_KEY_MISMATCH"::equals).hasSize(1);
+        assertThat(executions.findByObligationId(obligationId).size()
+                +executions.findByObligationId(secondObligation).size()).isEqualTo(1);
     }
 
     @Test void invalidExceptionReasonsAndMissingMultipartParametersReturnControlledErrors() throws Exception {
@@ -358,8 +412,24 @@ class OperatorFlowIntegrationTests {
         return "Bearer "+response(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                 .content(json.createObjectNode().put("identifier",user.getEmail()).put("password","TestPassword123!").toString()),200).path("token").asText();
     }
+    private long createObligation(String title) throws Exception {
+        ObjectNode request=json.createObjectNode().put("title",title).put("description","Clean reception")
+                .put("siteName","Site").put("assignedOperatorId",owner.getId())
+                .put("startsAt",START.toString()).put("dueAt",END.toString());
+        request.putArray("steps").addObject().put("title","Floor");
+        request.withArray("steps").addObject().put("title","Desk");
+        request.putArray("photoRequirements").addObject().put("title","Finished floor");
+        request.withArray("photoRequirements").addObject().put("title","Finished desk");
+        return response(post("/api/v1/obligations").header("Authorization",supervisorToken)
+                .contentType(MediaType.APPLICATION_JSON).content(request.toString()),201).path("id").asLong();
+    }
+    private String startOutcome(long targetObligation,String key) {
+        try { return "STARTED:"+flow.start(targetObligation,key,owner).execution().id(); }
+        catch(ApiConflictException exception) { return exception.getCode(); }
+    }
     private String startPath() { return "/api/v1/obligations/"+obligationId+"/execution"; }
-    private JsonNode start() throws Exception { return response(post(startPath()).header("Authorization",ownerToken),201); }
+    private JsonNode start() throws Exception { return response(post(startPath()).header("Authorization",ownerToken)
+            .header("Idempotency-Key",startKey),201); }
     private JsonNode current() throws Exception { return response(get(startPath()).header("Authorization",ownerToken),200); }
     private JsonNode step(JsonNode state,int index,boolean completed) throws Exception { return stepRequest(state,index,completed,state.path("version").asLong(),200); }
     private JsonNode stepRequest(JsonNode state,int index,boolean completed,long version,int status) throws Exception {
@@ -375,7 +445,15 @@ class OperatorFlowIntegrationTests {
     private JsonNode upload(JsonNode state,int index,byte[] bytes) throws Exception { return response(photoRequest(state,index,bytes,"image/png"),200); }
     private JsonNode submit(JsonNode state,int status) throws Exception {
         return response(post("/api/v1/executions/"+state.path("id").asLong()+"/submit").header("Authorization",ownerToken)
+                .header("Idempotency-Key",submitKey)
                 .contentType(MediaType.APPLICATION_JSON).content(json.createObjectNode().put("expectedVersion",state.path("version").asLong()).toString()),status);
+    }
+    private JsonNode submitRequest(JsonNode state,String key,String notes,int status) throws Exception {
+        ObjectNode command=json.createObjectNode().put("expectedVersion",state.path("version").asLong());
+        if(notes!=null) command.put("notes",notes);
+        return response(post("/api/v1/executions/"+state.path("id").asLong()+"/submit")
+                .header("Authorization",ownerToken).header("Idempotency-Key",key)
+                .contentType(MediaType.APPLICATION_JSON).content(command.toString()),status);
     }
     private String exceptionPath(JsonNode state) { return "/api/v1/executions/"+state.path("id").asLong()+"/exceptions"; }
     private ObjectNode exceptionCommand(JsonNode state,UUID operation) {
