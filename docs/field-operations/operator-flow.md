@@ -28,6 +28,7 @@ Todas llevan prefijo `/api/v1` y usan `Authorization: Bearer <token>`.
 | PUT `/executions/{id}/steps/{stepId}` | `{ completed, expectedVersion }` | Vista completa con el paso actualizado. |
 | POST `/executions/{id}/exceptions` | Motivo, descripción, operación y versión; paso opcional. | Vista completa con el impedimento conservado. |
 | POST `/executions/{id}/photo-requirements/{requirementId}/photo` | Multipart: `file`, `expectedVersion`; `capturedAt` opcional. | Vista completa tras almacenar realmente el archivo. |
+| POST `/executions/{id}/evidence-requirements/{requirementId}/evidence` | Cabecera `Idempotency-Key`. Multipart para PHOTO/SIGNATURE; JSON para QR_CODE/LOCATION. Siempre incluye `capturedAt` y `expectedVersion`. | Evidencia creada o el mismo registro en un replay exacto. |
 | POST `/executions/{id}/submit` | Cabecera `Idempotency-Key`; `{ expectedVersion, notes? }` | Vista enviada, validada por el servidor. |
 | GET `/evidence/{id}/content` | Sin cuerpo. | Bytes JPEG/PNG privados, con autorización y `Cache-Control: no-store`. |
 
@@ -38,11 +39,14 @@ No deben sustituirse por IDs fijos ni datos de demostración en las pantallas.
 
 Incluye `id`, `obligationId`, `operatorId`, `state`, `obligationStatus`, `result`,
 `startedAt`, `submittedAt`, `startsAt`, `dueAt`, `timezone`, `version`, `canEdit`,
-`notes`, `steps`, `photoRequirements` y `exceptions`.
+`notes`, `steps`, `photoRequirements`, `evidenceRequirements` y `exceptions`.
 
 - Cada paso conserva su ID, título, instrucciones, posición, `completed` y `updatedAt`.
 - Cada requisito fotográfico conserva su ID, título, descripción y posición; agrega
   `evidenceId`, `uploadedAt` y `contentPath` solamente cuando existe un archivo registrado.
+- Cada requisito versionado indica ID, requisito fuente, tipo, obligatoriedad, mínimo, máximo,
+  posición, restricciones y su lista inmutable de evidencias. Los archivos muestran una ruta
+  protegida; QR y ubicación muestran solo datos estructurados y metadatos de auditoría.
 - Cada impedimento incluye ID, paso opcional, motivo, descripción, actor, fecha y `operationId`.
 - Nunca se devuelve la clave del almacenamiento ni su ruta interna. `contentPath` es una ruta
   protegida de nuestra API, no una URL pública del proveedor.
@@ -124,7 +128,27 @@ El impedimento no completa la obligación, no exime fotografías o pasos, no blo
 de continuar antes del límite y no genera una evaluación de cumplimiento. Permanece en el
 historial aunque el operario consiga después completar y enviar la ejecución.
 
-## Fotografías: US-06
+## Evidencia requerida: US-06
+
+- La generación copia todas las reglas PHOTO, QR_CODE, LOCATION y SIGNATURE a la obligación.
+  La copia mantiene el requisito fuente y la versión de definición de la obligación; una edición
+  posterior de Service Planning no cambia trabajo ya materializado.
+- Cada adjunto exige `Idempotency-Key` durante siete días. El contenido semántico incluye
+  ejecución, requisito, captura y archivo/datos normalizados, pero no `expectedVersion`. Un replay
+  exacto devuelve el mismo ID sin otra escritura; cambiar el contenido produce
+  `409 IDEMPOTENCY_KEY_MISMATCH`.
+- PHOTO admite JPEG/PNG de hasta 5 MiB y 25 millones de píxeles. SIGNATURE admite solamente PNG
+  de hasta 1 MiB. Ambos se guardan de forma privada y nunca devuelven `storageKey`.
+- QR_CODE admite 1–512 caracteres y respeta `expectedPrefix`. LOCATION exige latitud `[-90,90]`,
+  longitud `[-180,180]`, precisión positiva y `maxAccuracyMeters`. PHOTO respeta
+  `requireGeolocation` y `maxAgeMinutes` cuando la regla los declara.
+- La evidencia no se reemplaza ni se elimina automáticamente en V1. Se impide superar
+  `maximumCount`. Al enviar, solo un requisito `required` por debajo de `minimumCount` bloquea;
+  requisitos opcionales ausentes no bloquean.
+- La descarga revalida empresa, centro, ejecución y propietario. Administrador/supervisor pueden
+  leer dentro de su alcance y el operario solo su propia ejecución.
+
+### Compatibilidad fotográfica anterior
 
 - Cada requisito admite una única fotografía. Un nuevo archivo diferente no puede reemplazarla.
 - Un reintento con los mismos bytes conserva el registro original, sus metadatos y fecha; no
@@ -168,8 +192,9 @@ Los endpoints privados usan exclusivamente credenciales de servidor y no siguen 
 
 ## Envío explícito
 
-`POST /executions/{id}/submit` exige todos los pasos marcados, todas las fotos exigidas
-registradas, versión vigente y plazo abierto. `notes` es opcional y admite hasta 2000 caracteres.
+`POST /executions/{id}/submit` exige todos los pasos marcados, todas las fotos legacy exigidas
+registradas y los mínimos de cada requisito versionado obligatorio. Los requisitos opcionales
+no impiden el envío. También exige versión vigente y plazo abierto. `notes` es opcional y admite hasta 2000 caracteres.
 No recibe un resultado elegido por el operario.
 
 Solo al superar esas validaciones registra `submittedAt`, establece `result=COMPLETED` y
@@ -198,7 +223,7 @@ obligaciones nuevas con su configuración explícita.
 Se conserva `ApiError` y los códigos 400/401/403/404. Los conflictos 409 incluyen:
 `EXECUTION_NOT_CONFIGURED`, `EXECUTION_NOT_STARTED_YET`, `OBLIGATION_OVERDUE`,
 `INVALID_EXECUTION_STATE`, `EXECUTION_ALREADY_SUBMITTED`, `VERSION_CONFLICT`,
-`PHOTO_ALREADY_ATTACHED`, `IDEMPOTENCY_KEY_MISMATCH` y los de compatibilidad anteriores.
+`PHOTO_ALREADY_ATTACHED`, `EVIDENCE_LIMIT_REACHED`, `IDEMPOTENCY_KEY_MISMATCH` y los de compatibilidad anteriores.
 Una ejecución incompleta devuelve `400 VALIDATION_ERROR` con `details.steps` y/o
 `details.photoRequirements`. Parámetros multipart ausentes o mal formados devuelven
 `400 INVALID_REQUEST`; una carga que supera el límite del servidor devuelve
@@ -209,19 +234,22 @@ Una ejecución incompleta devuelve `400 VALIDATION_ERROR` con `details.steps` y/
 V11 conserva los datos históricos y agrega ciclo/versión a `executions`,
 `execution_step_progress`, `operational_exceptions` y metadatos privados en `evidences`.
 No cambia V1–V10, usuarios, pertenencias a centros ni las tablas de Service Planning.
-V16 agrega referencias idempotentes de siete días para inicio y envío, sin guardar tokens ni
-contenido sensible y con eliminación en cascada al eliminar una ejecución.
+V16 agrega referencias idempotentes de siete días para inicio y envío. V17 agrega snapshots de
+requisitos, datos estructurados y referencias idempotentes de evidencia; aplica límites de tipo y
+contenido en PostgreSQL y elimina la referencia idempotente si desaparece su evidencia.
 
 ```mermaid
 erDiagram
     OBLIGATIONS ||--o{ EXECUTIONS : registra
     OBLIGATIONS ||--o{ OBLIGATION_STEPS : define
     OBLIGATIONS ||--o{ OBLIGATION_PHOTO_REQUIREMENTS : exige
+    OBLIGATIONS ||--o{ OBLIGATION_EVIDENCE_REQUIREMENTS : versiona
     EXECUTIONS ||--o{ EXECUTION_STEP_PROGRESS : conserva
     EXECUTIONS ||--o{ OPERATIONAL_EXCEPTIONS : documenta
     EXECUTIONS ||--o{ EVIDENCES : respalda
     OBLIGATION_STEPS ||--o{ EXECUTION_STEP_PROGRESS : identifica
     OBLIGATION_PHOTO_REQUIREMENTS ||--o{ EVIDENCES : satisface
+    OBLIGATION_EVIDENCE_REQUIREMENTS ||--o{ EVIDENCES : satisface
 ```
 
 La multiplicidad histórica de ejecuciones se conserva; el índice parcial de V11 limita a una
@@ -275,6 +303,17 @@ local y las variables de Spring Datasource/Flyway dirigidas a esa misma base tem
 gradlew.bat test --no-daemon --rerun-tasks --tests com.api.servicecompliance.OperatorFlowIntegrationTests --tests com.api.servicecompliance.OperatorFlowMigrationTests --tests com.api.servicecompliance.ObligationDetailsIntegrationTests --tests com.api.servicecompliance.ObligationDetailsMigrationTests --tests com.api.servicecompliance.SupabasePhotoStorageTests
 ```
 
+### Resultado de verificación BE-US-06 (2026-11-16)
+
+- Java 17: suite H2 completa con 103 pruebas, 95 ejecutadas correctamente y 8 migraciones opt-in
+  omitidas por configuración.
+- PostgreSQL 16 local: 25/25 pruebas HTTP del flujo con Flyway V1–V17 y Hibernate `validate`;
+  5/5 pruebas enfocadas de migración, restricciones, unicidad y cascada.
+- Se usaron bases exclusivas creadas en el servidor local ya activo y se eliminaron al terminar.
+  No se inició Docker ni se modificó la base persistente `service_compliance`.
+- El almacenamiento de prueba fue en memoria. No se usaron credenciales de un proyecto Supabase,
+  por lo que la integración real con ese proveedor permanece como verificación de entorno.
+
 ## Archivos de esta continuación
 
 Rutas relativas al backend; los paquetes Java parten de
@@ -296,6 +335,7 @@ Rutas relativas al backend; los paquetes Java parten de
 - `shared/web/GlobalExceptionHandler.java`: errores controlados de multipart y almacenamiento.
 - `src/main/resources/application.properties`: configuración privada y límites multipart.
 - `src/main/resources/db/migration/V11__add_operator_execution_flow.sql`.
+- `src/main/resources/db/migration/V17__add_required_evidence_contract.sql`.
 - `src/test/java/com/api/servicecompliance/OperatorFlowIntegrationTests.java`,
   `OperatorFlowMigrationTests.java`, `SupabasePhotoStorageTests.java`.
 - `src/test/java/com/api/servicecompliance/ObligationDetailsMigrationTests.java`: fija la prueba
