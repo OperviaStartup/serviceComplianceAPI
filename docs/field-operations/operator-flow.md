@@ -234,9 +234,10 @@ Una ejecución incompleta devuelve `400 VALIDATION_ERROR` con `details.steps` y/
 V11 conserva los datos históricos y agrega ciclo/versión a `executions`,
 `execution_step_progress`, `operational_exceptions` y metadatos privados en `evidences`.
 No cambia V1–V10, usuarios, pertenencias a centros ni las tablas de Service Planning.
-V16 agrega referencias idempotentes de siete días para inicio y envío. V17 agrega snapshots de
-requisitos, datos estructurados y referencias idempotentes de evidencia; aplica límites de tipo y
-contenido en PostgreSQL y elimina la referencia idempotente si desaparece su evidencia.
+V16 agrega referencias idempotentes de siete días para inicio y envío. V17 agrega snapshots,
+datos estructurados y referencias idempotentes de evidencia. V18 conserva el checksum histórico
+de V17 y agrega los límites fuertes de tipo/contenido, independencia del snapshot y obligatoriedad
+de su referencia fuente. La referencia idempotente desaparece si se elimina su evidencia.
 
 ```mermaid
 erDiagram
@@ -307,7 +308,7 @@ gradlew.bat test --no-daemon --rerun-tasks --tests com.api.servicecompliance.Ope
 
 - Java 17: suite H2 completa con 103 pruebas, 95 ejecutadas correctamente y 8 migraciones opt-in
   omitidas por configuración.
-- PostgreSQL 16 local: 25/25 pruebas HTTP del flujo con Flyway V1–V17 y Hibernate `validate`;
+- PostgreSQL 16 local: 25/25 pruebas HTTP del flujo con Flyway V1–V18 y Hibernate `validate`;
   5/5 pruebas enfocadas de migración, restricciones, unicidad y cascada.
 - Se usaron bases exclusivas creadas en el servidor local ya activo y se eliminaron al terminar.
   No se inició Docker ni se modificó la base persistente `service_compliance`.
@@ -336,6 +337,7 @@ Rutas relativas al backend; los paquetes Java parten de
 - `src/main/resources/application.properties`: configuración privada y límites multipart.
 - `src/main/resources/db/migration/V11__add_operator_execution_flow.sql`.
 - `src/main/resources/db/migration/V17__add_required_evidence_contract.sql`.
+- `src/main/resources/db/migration/V18__strengthen_required_evidence_integrity.sql`.
 - `src/test/java/com/api/servicecompliance/OperatorFlowIntegrationTests.java`,
   `OperatorFlowMigrationTests.java`, `SupabasePhotoStorageTests.java`.
 - `src/test/java/com/api/servicecompliance/ObligationDetailsMigrationTests.java`: fija la prueba

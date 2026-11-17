@@ -67,7 +67,7 @@ class OperatorFlowMigrationTests {
             plan=id(statement,"INSERT INTO service_plans(company_id,service_id,site_id,start_date,end_date,timezone,state,created_by,created_at,updated_at) "
                     +"VALUES (1,1,1,'2030-01-01','2030-01-31','America/Lima','DRAFT',"+actor+",CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id");
         }
-        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(6);
+        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(7);
         flyway(schema,"latest").validate();
         try (var connection=connection(schema); var statement=connection.createStatement()) {
             try (var result=statement.executeQuery("SELECT version, success FROM flyway_schema_history WHERE version IN ('10','11','12') ORDER BY installed_rank")) {
@@ -114,6 +114,8 @@ class OperatorFlowMigrationTests {
     @Test void requiredEvidenceMigrationEnforcesSnapshotsCountsAndIdempotency() throws Exception {
         String schema=schema(); assertThat(flyway(schema,"17").migrate().migrationsExecuted).isEqualTo(17);
         flyway(schema,"17").validate();
+        assertThat(flyway(schema,"18").migrate().migrationsExecuted).isEqualTo(1);
+        flyway(schema,"18").validate();
         try(var connection=connection(schema);var statement=connection.createStatement()) {
             long operator=operator(statement), obligation=obligation(statement,operator);
             long execution=id(statement,"INSERT INTO executions(obligation_id,operator_id,state,started_at,executed_at,updated_at) VALUES ("

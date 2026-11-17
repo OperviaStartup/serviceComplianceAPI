@@ -44,7 +44,7 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 
 - Status: `IN_REVIEW`
 - Commits: `4d760b2` implementation and verification.
-- Checks: Java 17 full H2 suite: 103 tests, 95 executed and 8 opt-in skips; PostgreSQL 16 HTTP/Flyway/Hibernate suite: 25/25; focused V1–V17 migration suite: 5/5. Real Supabase integration not executed because no test project credentials were used.
+- Checks: Java 17 full H2 suite: 103 tests, 95 executed and 8 opt-in skips; PostgreSQL 16 HTTP/Flyway/Hibernate suite: 25/25; focused V1–V18 migration suite: 5/5. Real Supabase integration not executed because no test project credentials were used.
 - Blockers: `NONE_FOR_LOCAL_REVIEW`; merge and verification on `develop` remain required for `DONE`.
 - Next action: Review the diff, create focused Conventional Commits, and hand off for push/PR.
 - Source: Bundled `$opervia` backend ticket catalog; this is a planning baseline, not implementation evidence.
