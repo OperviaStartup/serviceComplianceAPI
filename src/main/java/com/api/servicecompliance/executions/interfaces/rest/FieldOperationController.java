@@ -2,6 +2,7 @@ package com.api.servicecompliance.executions.interfaces.rest;
 
 import com.api.servicecompliance.authentication.application.AuthService;
 import com.api.servicecompliance.executions.application.FieldExecutionService;
+import com.api.servicecompliance.executions.application.RequiredEvidenceService;
 import com.api.servicecompliance.shared.web.ApiError;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.security.Principal;
 import java.time.Instant;
+import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -26,9 +28,11 @@ import java.time.Instant;
 @PreAuthorize("hasAnyRole('OPERATOR','SUPERVISOR','ADMIN')")
 public class FieldOperationController {
     private final FieldExecutionService executions;
+    private final RequiredEvidenceService requiredEvidence;
     private final AuthService auth;
-    public FieldOperationController(FieldExecutionService executions, AuthService auth) {
-        this.executions=executions; this.auth=auth;
+    public FieldOperationController(FieldExecutionService executions, RequiredEvidenceService requiredEvidence,
+                                    AuthService auth) {
+        this.executions=executions; this.requiredEvidence=requiredEvidence; this.auth=auth;
     }
 
     @PostMapping("/obligations/{id}/execution")
@@ -85,6 +89,59 @@ public class FieldOperationController {
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE_TIME) Instant capturedAt,
             Principal principal) {
         return executions.attachPhoto(id, requirementId, file, expectedVersion, capturedAt,
+                auth.currentUser(principal.getName()));
+    }
+
+    @PostMapping(value="/executions/{id}/evidence-requirements/{requirementId}/evidence",
+            consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('OPERATOR')")
+    @Operation(summary="Adjuntar evidencia fotográfica o firma privada",
+            description="Requiere Idempotency-Key. PHOTO acepta JPEG/PNG hasta 5 MB y SIGNATURE solo PNG hasta 1 MB. La evidencia es inmutable.")
+    @ApiResponse(responseCode="200", description="Evidencia registrada o replay idempotente")
+    @ApiResponse(responseCode="400", description="Archivo, captura o geolocalización inválidos",
+            content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="403", description="El operador no es propietario",
+            content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="404", description="Ejecución o requisito fuera del alcance",
+            content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="409", description="Versión, límite o clave incompatible",
+            content=@Content(schema=@Schema(implementation=ApiError.class)))
+    public RequiredEvidenceService.EvidenceView binaryEvidence(
+            @PathVariable Long id, @PathVariable Long requirementId,
+            @Parameter(required=true, description="Clave idempotente conservada por 7 días")
+            @RequestHeader(value="Idempotency-Key", required=false) String idempotencyKey,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam long expectedVersion,
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE_TIME) Instant capturedAt,
+            @RequestParam(required=false) BigDecimal latitude,
+            @RequestParam(required=false) BigDecimal longitude,
+            @RequestParam(required=false) BigDecimal accuracyMeters,
+            Principal principal) {
+        return requiredEvidence.attachBinary(id, requirementId, idempotencyKey, file, expectedVersion,
+                capturedAt, latitude, longitude, accuracyMeters, auth.currentUser(principal.getName()));
+    }
+
+    @PostMapping(value="/executions/{id}/evidence-requirements/{requirementId}/evidence",
+            consumes=MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('OPERATOR')")
+    @Operation(summary="Registrar evidencia QR o ubicación",
+            description="Requiere Idempotency-Key. QR_CODE admite hasta 512 caracteres y LOCATION valida coordenadas y precisión. La evidencia es inmutable.")
+    @ApiResponse(responseCode="200", description="Evidencia registrada o replay idempotente")
+    @ApiResponse(responseCode="400", description="Valor QR, captura o ubicación inválidos",
+            content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="403", description="El operador no es propietario",
+            content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="404", description="Ejecución o requisito fuera del alcance",
+            content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="409", description="Versión, límite o clave incompatible",
+            content=@Content(schema=@Schema(implementation=ApiError.class)))
+    public RequiredEvidenceService.EvidenceView structuredEvidence(
+            @PathVariable Long id, @PathVariable Long requirementId,
+            @Parameter(required=true, description="Clave idempotente conservada por 7 días")
+            @RequestHeader(value="Idempotency-Key", required=false) String idempotencyKey,
+            @Valid @RequestBody RequiredEvidenceService.StructuredEvidenceCommand command,
+            Principal principal) {
+        return requiredEvidence.attachStructured(id, requirementId, idempotencyKey, command,
                 auth.currentUser(principal.getName()));
     }
 

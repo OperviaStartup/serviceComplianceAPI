@@ -60,6 +60,15 @@ class ObligationGenerationServiceTests {
         assertThat(captured.getValue().getSourceDefinitionVersion()).isEqualTo(definition.getVersion());
         assertThat(captured.getValue().getOccurrenceDate()).isEqualTo(LocalDate.of(2026, 11, 10));
         assertThat(captured.getValue().getAssignedOperatorId()).isNull();
+        assertThat(captured.getValue().getEvidenceRequirements()).singleElement().satisfies(requirement -> {
+            assertThat(requirement.getSourceRequirementId()).isEqualTo(
+                    definition.getEvidenceRequirements().get(0).getId());
+            assertThat(requirement.getEvidenceType().name()).isEqualTo("PHOTO");
+            assertThat(requirement.isRequired()).isTrue();
+            assertThat(requirement.getMinimumCount()).isEqualTo(1);
+            assertThat(requirement.getMaximumCount()).isEqualTo(1);
+        });
+        assertThat(captured.getValue().getPhotoRequirements()).isEmpty();
     }
 
     @Test

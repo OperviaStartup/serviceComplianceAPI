@@ -10,7 +10,8 @@
 Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and `BE-US-20`.
 Decisions 6 and 8 were approved for `BE-US-01`; the definition-only portions of decisions 7 and 10
 were approved for `BE-US-02` on 2026-11-05. The BE-US-05 portions of decisions 8 and 9 were
-approved on 2026-11-15. Unapproved portions of decisions 7 and 9–18 remain draft. Preserve
+approved on 2026-11-15. Decision 10 was fully approved for `BE-US-06` on 2026-11-16. Unapproved
+portions of decisions 7, 9, and 11–18 remain draft. Preserve
 `/api/v1` compatibility or document a consumer migration path.
 
 ## Proposed defaults for review
@@ -29,7 +30,7 @@ sections below control where they differ.
 | 7 | Definitions use structured `ONCE`, `DAILY`, or `WEEKLY` schedules with recurrence interval, optional weekdays/occurrence date, local start time, execution-window duration, and `America/Lima`. Occurrence generation and recovery remain owned by `BE-US-25`. |
 | 8 | Scope operation IDs to company, actor, command, and client key. Persist a SHA-256 hash of normalized semantic fields and the created-resource response reference for seven days. Exact replay returns the original result; a changed payload returns `IDEMPOTENCY_KEY_MISMATCH`. A unique database constraint serializes concurrent use of the same key. |
 | 9 | Server transitions `NOT_STARTED → IN_PROGRESS → SUBMITTED` or `EXCEPTED`, with explicit cancellation/retry policy. Sync and compliance states use separate fields/enums. |
-| 10 | `BE-US-02` defines `PHOTO`, `QR_CODE`, `LOCATION`, and `SIGNATURE` requirements with required/optional status, count bounds, and allowlisted type-specific metadata. Private storage, upload/download, integrity, scanning, and retention remain owned by `BE-US-06`. |
+| 10 | `BE-US-02` defines `PHOTO`, `QR_CODE`, `LOCATION`, and `SIGNATURE` requirements with required/optional status, count bounds, and allowlisted metadata. Generated obligations retain immutable requirement snapshots. `BE-US-06` stores PHOTO/SIGNATURE privately and QR/LOCATION structurally, requires seven-day idempotency, enforces count/metadata rules, and retains immutable evidence with its execution. |
 | 11 | Accept bounded batches with client operation IDs and dependency references; process in dependency order with per-item transactions and stable results `SYNCED`, `RETRYABLE`, `REQUIRES_ATTENTION`. Use version conflicts for stale writes. |
 | 12 | Derive operational status from execution lifecycle and window with precedence `EXCEPTED`, `SUBMITTED`, `IN_PROGRESS`, `OVERDUE`, `ASSIGNED`; overdue starts at exclusive window end. Reuse the same predicate for rows and counts. |
 | 13 | Freeze the submitted evidence/exception set by version; review reads one immutable submitted version, and later additions require a new explicit revision. |
@@ -90,9 +91,23 @@ The remaining schedule syntax, content allowlist, report performance target, and
    Affected: `BE-US-05`, `07`, `08`, `09`.
 10. **Evidence.** Approved definition contract for `BE-US-02`: reuse the stable evidence codes
     `PHOTO`, `QR_CODE`, `LOCATION`, and `SIGNATURE`; record required/optional status, minimum and
-    maximum count, and allowlisted type-specific validation metadata. Storage, upload/download,
-    formats/sizes, integrity, retention, scanning, and privacy remain pending for `BE-US-06`.
-    Evidence requirements apply only to their definition/version. Affected: `BE-US-02`, `06`, `10`, `21`.
+    maximum count, and allowlisted type-specific validation metadata. Approved `BE-US-06`
+    refinement: each generated obligation stores an immutable copy linked to the source requirement
+    and definition version. PHOTO accepts decoded JPEG/PNG up to 5 MiB and 25 million pixels;
+    SIGNATURE accepts PNG up to 1 MiB. QR_CODE stores at most 512 characters and validates
+    `expectedPrefix`; LOCATION stores latitude, longitude, accuracy, and capture time and validates
+    `maxAccuracyMeters`. PHOTO may require geolocation and enforce `maxAgeMinutes`.
+
+    Binary objects remain private in Supabase and are served only through the authorized backend;
+    QR and location payloads remain in PostgreSQL. Every attachment requires an `Idempotency-Key`
+    scoped to company, actor, and command for seven days. Exact replay returns the original
+    evidence, while changed semantic content returns `IDEMPOTENCY_KEY_MISMATCH`. Evidence is
+    immutable, maximum counts are enforced, and submission checks only required minimum counts;
+    optional evidence never blocks submission. Records retain actor, capture/server timestamps,
+    type, size, checksum, and structured metadata. V1 performs no automatic evidence deletion or
+    replacement; evidence follows execution/case retention. Downloads reauthorize company, site,
+    execution, and owner without exposing storage keys. The legacy photo endpoint remains available
+    for pre-existing configured obligations. Affected: `BE-US-02`, `06`, `10`, `21`.
 11. **Offline sync.** Set batch limits, client references/dependency order, transaction boundaries, per-item outcomes, conflict and retry codes, and interruption recovery. Affected: `BE-US-08`, `23`.
 
 ## Review, follow-up, and reporting
@@ -138,12 +153,12 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05 through 2026-11-15; decisions 1–6, the BE-US-01 and
+- Approval date and revision: 2026-11-05 through 2026-11-16; decisions 1–6, the BE-US-01 and
   BE-US-05 portions of decision 8, and the BE-US-05 portion of decision 9,
   including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI
   login, Stripe-backed seat rules, inclusive Lima plan dates, seven-day plan-creation
   idempotency, the BE-US-04 assigned-work synchronization refinement of decision 12, and the
-  approved BE-US-05 online execution lifecycle.
-- Approved references: User approval for `BE-US-17`, `BE-US-20`, `BE-US-01`, and `BE-US-05`;
-  decision 7 and the remaining portions of decisions 9–18 remain pending.
+  approved BE-US-05 online execution lifecycle, and the complete BE-US-06 evidence contract.
+- Approved references: User approval for `BE-US-17`, `BE-US-20`, `BE-US-01`, `BE-US-05`, and
+  `BE-US-06`; decision 7 and the remaining portions of decisions 9 and 11–18 remain pending.
 - First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.

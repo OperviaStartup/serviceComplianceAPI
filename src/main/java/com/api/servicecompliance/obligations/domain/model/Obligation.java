@@ -33,6 +33,10 @@ public class Obligation {
     @JoinColumn(name = "obligation_id", nullable = false)
     @OrderBy("position ASC")
     private List<ObligationPhotoRequirement> photoRequirements = new ArrayList<>();
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "obligation_id", nullable = false)
+    @OrderBy("position ASC")
+    private List<ObligationEvidenceRequirement> evidenceRequirements = new ArrayList<>();
     protected Obligation(){}
     public Obligation(String title,String description,String siteName,Long assignedOperatorId,Instant dueAt,Long companyId,Long siteId){this.companyId=java.util.Objects.requireNonNull(companyId);this.siteId=java.util.Objects.requireNonNull(siteId);this.title=title;this.description=description;this.siteName=siteName;this.assignedOperatorId=assignedOperatorId;this.dueAt=dueAt;this.status=ObligationStatus.ASSIGNED;}
     public Obligation(String title, String description, String siteName, Long assignedOperatorId,
@@ -56,6 +60,32 @@ public class Obligation {
         this.occurrenceDate = occurrenceDate;
         this.timezone = TIMEZONE;
     }
+    public static Obligation generated(String title, String description, String siteName,
+                                       Instant startsAt, Instant dueAt, Long companyId, Long siteId,
+                                       Long sourcePlanId, Integer sourcePlanVersion,
+                                       Long sourceDefinitionId, Long sourceDefinitionVersion,
+                                       java.time.LocalDate occurrenceDate, List<ObligationStep> steps,
+                                       List<ObligationEvidenceRequirement> evidenceRequirements) {
+        Obligation obligation = new Obligation(title, description, siteName, null, startsAt, dueAt,
+                companyId, siteId, steps, List.of());
+        obligation.sourcePlanId = sourcePlanId;
+        obligation.sourcePlanVersion = sourcePlanVersion;
+        obligation.sourceDefinitionId = sourceDefinitionId;
+        obligation.sourceDefinitionVersion = sourceDefinitionVersion;
+        obligation.occurrenceDate = occurrenceDate;
+        obligation.timezone = TIMEZONE;
+        obligation.evidenceRequirements.addAll(evidenceRequirements);
+        return obligation;
+    }
+    public static Obligation configured(String title, String description, String siteName,
+                                        Instant startsAt, Instant dueAt, Long companyId, Long siteId,
+                                        List<ObligationStep> steps,
+                                        List<ObligationEvidenceRequirement> evidenceRequirements) {
+        Obligation obligation = new Obligation(title, description, siteName, null, startsAt, dueAt,
+                companyId, siteId, steps, List.of());
+        obligation.evidenceRequirements.addAll(evidenceRequirements);
+        return obligation;
+    }
     public Instant getStartsAt() { return startsAt; }
     public void markInProgress() { status = ObligationStatus.IN_PROGRESS; }
     public void markSubmitted() { status = ObligationStatus.SUBMITTED; }
@@ -67,6 +97,7 @@ public class Obligation {
     }
     public List<ObligationStep> getSteps() { return List.copyOf(steps); }
     public List<ObligationPhotoRequirement> getPhotoRequirements() { return List.copyOf(photoRequirements); }
+    public List<ObligationEvidenceRequirement> getEvidenceRequirements() { return List.copyOf(evidenceRequirements); }
     public void assignTo(Long operatorId) { assignedOperatorId = java.util.Objects.requireNonNull(operatorId); assignmentVersion++; }
     public Long getCompanyId(){return companyId;} public Long getSiteId(){return siteId;}
     public Long getId(){return id;} public String getTitle(){return title;} public String getDescription(){return description;} public String getSiteName(){return siteName;} public Long getAssignedOperatorId(){return assignedOperatorId;} public ObligationStatus getStatus(){return status;} public Instant getDueAt(){return dueAt;}

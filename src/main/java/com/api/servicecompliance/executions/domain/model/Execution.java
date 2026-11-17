@@ -36,6 +36,7 @@ public class Execution {
         updatedAt = now;
     }
     public void photoAttached(Instant now) { attachedPhotos++; updatedAt = now; }
+    public void evidenceAttached(Instant now) { attachedPhotos++; updatedAt = now; }
     public void exceptionReported(Instant now) { exceptionCount++; updatedAt = now; }
     public void submit(String notes, Instant now) {
         state = ExecutionState.SUBMITTED;

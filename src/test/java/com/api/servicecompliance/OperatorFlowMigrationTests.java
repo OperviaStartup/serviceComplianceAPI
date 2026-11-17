@@ -67,7 +67,7 @@ class OperatorFlowMigrationTests {
             plan=id(statement,"INSERT INTO service_plans(company_id,service_id,site_id,start_date,end_date,timezone,state,created_by,created_at,updated_at) "
                     +"VALUES (1,1,1,'2030-01-01','2030-01-31','America/Lima','DRAFT',"+actor+",CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id");
         }
-        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(5);
+        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(7);
         flyway(schema,"latest").validate();
         try (var connection=connection(schema); var statement=connection.createStatement()) {
             try (var result=statement.executeQuery("SELECT version, success FROM flyway_schema_history WHERE version IN ('10','11','12') ORDER BY installed_rank")) {
@@ -106,6 +106,34 @@ class OperatorFlowMigrationTests {
             statement.executeUpdate(record); rejects(statement,record,"23505");
             statement.executeUpdate("DELETE FROM executions WHERE id="+execution);
             try(var result=statement.executeQuery("SELECT count(*) FROM execution_idempotency WHERE execution_id="+execution)) {
+                assertThat(result.next()).isTrue(); assertThat(result.getLong(1)).isZero();
+            }
+        }
+    }
+
+    @Test void requiredEvidenceMigrationEnforcesSnapshotsCountsAndIdempotency() throws Exception {
+        String schema=schema(); assertThat(flyway(schema,"17").migrate().migrationsExecuted).isEqualTo(17);
+        flyway(schema,"17").validate();
+        assertThat(flyway(schema,"18").migrate().migrationsExecuted).isEqualTo(1);
+        flyway(schema,"18").validate();
+        try(var connection=connection(schema);var statement=connection.createStatement()) {
+            long operator=operator(statement), obligation=obligation(statement,operator);
+            long execution=id(statement,"INSERT INTO executions(obligation_id,operator_id,state,started_at,executed_at,updated_at) VALUES ("
+                    +obligation+","+operator+",'IN_PROGRESS','2030-01-01T15:00:00Z','2030-01-01T15:00:00Z','2030-01-01T15:00:00Z') RETURNING id");
+            long requirement=id(statement,"INSERT INTO obligation_evidence_requirements(obligation_id,source_requirement_id,evidence_type,is_required,minimum_count,maximum_count,requirement_order) VALUES ("
+                    +obligation+",987654321,'QR_CODE',TRUE,1,1,1) RETURNING id");
+            rejects(statement,"INSERT INTO obligation_evidence_requirements(obligation_id,source_requirement_id,evidence_type,is_required,minimum_count,maximum_count,requirement_order) VALUES ("
+                    +obligation+",987654322,'PHOTO',TRUE,2,1,2)","23514");
+            long stored=id(statement,"INSERT INTO evidences(execution_id,type,evidence_requirement_id,created_by,text_value,file_size,checksum,captured_at,created_at) VALUES ("
+                    +execution+",'QR_CODE',"+requirement+","+operator+",'OPER-123',8,'"+"a".repeat(64)+"','2030-01-01T15:01:00Z','2030-01-01T15:01:01Z') RETURNING id");
+            rejects(statement,"INSERT INTO evidences(execution_id,type,evidence_requirement_id,created_by,text_value,captured_at,created_at) VALUES ("
+                    +execution+",'LOCATION',"+requirement+","+operator+",'not-location','2030-01-01T15:01:00Z','2030-01-01T15:01:01Z')","23514");
+            String record="INSERT INTO evidence_idempotency(company_id,actor_id,command,idempotency_key,request_hash,evidence_id,created_at,expires_at) VALUES "
+                    +"(1,"+operator+",'ATTACH_EVIDENCE','evidence-migration-key','"+"a".repeat(64)+"',"+stored
+                    +",CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '7 days')";
+            statement.executeUpdate(record); rejects(statement,record,"23505");
+            statement.executeUpdate("DELETE FROM evidences WHERE id="+stored);
+            try(var result=statement.executeQuery("SELECT count(*) FROM evidence_idempotency WHERE evidence_id="+stored)) {
                 assertThat(result.next()).isTrue(); assertThat(result.getLong(1)).isZero();
             }
         }
