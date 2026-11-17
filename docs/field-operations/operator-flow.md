@@ -1,5 +1,7 @@
 # Flujo del operario: contrato de la primera entrega
 
+Preparación previa por ADMIN: [happy path del administrador](admin-flow.md).
+
 Este documento complementa el [detalle de obligación](obligation-detail.md). Implementa el flujo
 online acordado: detalle, inicio, recuperación del avance, fotografías, impedimentos y envío.
 Mantiene un centro por cuenta y los permisos existentes. La activación/generación de planes,
@@ -34,6 +36,308 @@ Todas llevan prefijo `/api/v1` y usan `Authorization: Bearer <token>`.
 
 Los IDs del listado, del detalle y de cada respuesta se reutilizan en la siguiente operación.
 No deben sustituirse por IDs fijos ni datos de demostración en las pantallas.
+
+## Happy path completo de endpoints
+
+Este recorrido supone una cuenta `OPERATOR` activa, una obligación asignada dentro de su ventana
+`[startsAt, dueAt)` y una definición que materializó requisitos PHOTO, QR_CODE, LOCATION y
+SIGNATURE. Una obligación real puede contener solo algunos tipos. El cliente debe leer la respuesta
+y ejecutar solamente los requisitos presentes, repitiendo cada tipo hasta alcanzar su
+`minimumCount` cuando sea obligatorio.
+
+Los números de los ejemplos son ilustrativos. La aplicación debe guardar los valores reales de
+cada respuesta:
+
+```text
+BASE_URL       = http://localhost:8080/api/v1
+TOKEN          = respuesta de login.token
+OBLIGATION_ID  = assigned-obligations.items[].id
+EXECUTION_ID   = respuesta de inicio.id
+VERSION        = respuesta más reciente de execution.version
+STEP_ID        = execution.steps[].id
+REQUIREMENT_ID = execution.evidenceRequirements[].id
+EVIDENCE_ID    = respuesta de adjunto.id
+```
+
+### 1. Iniciar sesión
+
+`identifier` admite el DNI peruano de ocho dígitos o el correo de una cuenta existente.
+
+```bash
+curl -X POST "$BASE_URL/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "identifier": "<DNI_O_CORREO>",
+    "password": "<CONTRASEÑA>"
+  }'
+```
+
+Fragmento de respuesta:
+
+```json
+{
+  "token": "<JWT_ACCESS_TOKEN>",
+  "userId": 42,
+  "role": "OPERATOR",
+  "refreshToken": "<TOKEN_OPACO>"
+}
+```
+
+Guardar `token` como `TOKEN`. El `refreshToken` no se usa como Bearer ni debe registrarse en logs.
+
+### 2. Seleccionar una obligación asignada
+
+```bash
+curl "$BASE_URL/assigned-obligations?status=ASSIGNED&limit=50" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Fragmento de respuesta:
+
+```json
+{
+  "items": [
+    {
+      "id": 120,
+      "activity": "Inspeccionar recepción",
+      "startsAt": "<INSTANTE_ISO_8601>",
+      "dueAt": "<INSTANTE_ISO_8601>",
+      "status": "ASSIGNED"
+    }
+  ],
+  "hasMore": false
+}
+```
+
+Guardar el `items[].id` seleccionado como `OBLIGATION_ID`. Si la obligación ya está
+`IN_PROGRESS`, recuperar su ejecución con `GET /obligations/{id}/execution` en vez de intentar
+crear otra.
+
+### 3. Iniciar o recuperar la ejecución
+
+Crear una clave estable para esta operación y conservarla hasta recibir una respuesta definitiva:
+
+```bash
+curl -X POST "$BASE_URL/obligations/$OBLIGATION_ID/execution" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Idempotency-Key: start-550e8400-e29b-41d4-a716-446655440000'
+```
+
+La primera ejecución responde `201`; el replay exacto responde `200`. Fragmento:
+
+```json
+{
+  "id": 310,
+  "obligationId": 120,
+  "state": "IN_PROGRESS",
+  "version": 0,
+  "canEdit": true,
+  "steps": [
+    { "id": 701, "position": 1, "completed": false }
+  ],
+  "evidenceRequirements": [
+    {
+      "id": 801,
+      "type": "PHOTO",
+      "required": true,
+      "minimumCount": 1,
+      "maximumCount": 2,
+      "constraints": { "requireGeolocation": "true", "maxAgeMinutes": "30" },
+      "evidence": []
+    },
+    {
+      "id": 802,
+      "type": "QR_CODE",
+      "required": true,
+      "minimumCount": 1,
+      "maximumCount": 1,
+      "constraints": { "expectedPrefix": "OPER-" },
+      "evidence": []
+    }
+  ]
+}
+```
+
+Guardar `id` como `EXECUTION_ID`, `version` como `VERSION`, los IDs de `steps` y el `id` de cada
+`evidenceRequirements` por tipo. Para adjuntar se usa el `id` del snapshot de la obligación, no
+`sourceRequirementId`.
+
+En cualquier reanudación se puede reconstruir todo el estado con:
+
+```bash
+curl "$BASE_URL/executions/$EXECUTION_ID/flow" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### 4. Completar todos los pasos
+
+Enviar un `PUT` por cada paso incompleto. Cada respuesta devuelve la vista completa y una nueva
+`version`; esa versión reemplaza a `VERSION` antes del siguiente cambio.
+
+```bash
+curl -X PUT "$BASE_URL/executions/$EXECUTION_ID/steps/$STEP_ID" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"completed\": true,
+    \"expectedVersion\": $VERSION
+  }"
+```
+
+No se deben completar pasos en paralelo usando la misma versión. Un `409 VERSION_CONFLICT`
+requiere consultar nuevamente `/flow` antes de decidir si se repite el cambio.
+
+### 5. Adjuntar la evidencia requerida
+
+`capturedAt` debe conservar exactamente el mismo valor en un reintento y no puede ser futuro.
+Cada adjunto usa una `Idempotency-Key` propia. Un mismo archivo o payload con la misma clave devuelve
+el `EVIDENCE_ID` original; cambiar bytes, captura o metadatos con esa clave devuelve
+`409 IDEMPOTENCY_KEY_MISMATCH`.
+
+El endpoint de evidencia devuelve `EvidenceView`, no la vista completa de ejecución. Después de
+cada adjunto exitoso, consultar `/flow` y sustituir `VERSION` por la versión recibida antes de
+adjuntar la evidencia siguiente.
+
+#### PHOTO
+
+Usar geolocalización cuando `constraints.requireGeolocation` sea `true`:
+
+```bash
+curl -X POST "$BASE_URL/executions/$EXECUTION_ID/evidence-requirements/$PHOTO_REQUIREMENT_ID/evidence" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Idempotency-Key: evidence-photo-550e8400-e29b-41d4-a716-446655440001' \
+  -F 'file=@/ruta/absoluta/foto.png;type=image/png' \
+  -F "expectedVersion=$VERSION" \
+  -F 'capturedAt=<INSTANTE_ISO_8601>' \
+  -F 'latitude=-12.046374' \
+  -F 'longitude=-77.042793' \
+  -F 'accuracyMeters=8.5'
+```
+
+Fragmento de respuesta:
+
+```json
+{
+  "id": 901,
+  "evidenceRequirementId": 801,
+  "type": "PHOTO",
+  "checksum": "<SHA_256>",
+  "capturedAt": "<INSTANTE_ISO_8601>",
+  "contentPath": "/api/v1/evidence/901/content"
+}
+```
+
+Guardar `id` como `EVIDENCE_ID` y `contentPath` para la descarga autenticada.
+
+#### QR_CODE
+
+El valor debe respetar `constraints.expectedPrefix` cuando exista:
+
+```bash
+curl -X POST "$BASE_URL/executions/$EXECUTION_ID/evidence-requirements/$QR_REQUIREMENT_ID/evidence" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Idempotency-Key: evidence-qr-550e8400-e29b-41d4-a716-446655440002' \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"textValue\": \"OPER-12345\",
+    \"capturedAt\": \"<INSTANTE_ISO_8601>\",
+    \"expectedVersion\": $VERSION
+  }"
+```
+
+#### LOCATION
+
+La precisión debe ser positiva y no superar `constraints.maxAccuracyMeters`:
+
+```bash
+curl -X POST "$BASE_URL/executions/$EXECUTION_ID/evidence-requirements/$LOCATION_REQUIREMENT_ID/evidence" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Idempotency-Key: evidence-location-550e8400-e29b-41d4-a716-446655440003' \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"latitude\": -12.046374,
+    \"longitude\": -77.042793,
+    \"accuracyMeters\": 8.5,
+    \"capturedAt\": \"<INSTANTE_ISO_8601>\",
+    \"expectedVersion\": $VERSION
+  }"
+```
+
+#### SIGNATURE
+
+SIGNATURE usa multipart como PHOTO, pero acepta solamente PNG hasta 1 MiB. No se envían
+coordenadas salvo que la regla futura las exija explícitamente.
+
+```bash
+curl -X POST "$BASE_URL/executions/$EXECUTION_ID/evidence-requirements/$SIGNATURE_REQUIREMENT_ID/evidence" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Idempotency-Key: evidence-signature-550e8400-e29b-41d4-a716-446655440004' \
+  -F 'file=@/ruta/absoluta/firma.png;type=image/png' \
+  -F "expectedVersion=$VERSION" \
+  -F 'capturedAt=<INSTANTE_ISO_8601>'
+```
+
+### 6. Revisar el estado consolidado
+
+Después del último paso o evidencia, consultar siempre la vista autoritativa:
+
+```bash
+curl "$BASE_URL/executions/$EXECUTION_ID/flow" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Antes de enviar se debe comprobar:
+
+- todos los elementos de `steps` tienen `completed: true`;
+- cada requisito `required` contiene al menos `minimumCount` elementos en `evidence`;
+- la cantidad nunca supera `maximumCount`;
+- `state` sigue siendo `IN_PROGRESS` y `canEdit` es `true`;
+- `VERSION` se actualiza con el `version` de esta respuesta.
+
+Los requisitos opcionales pueden permanecer con `evidence: []`.
+
+### 7. Enviar la ejecución
+
+```bash
+curl -X POST "$BASE_URL/executions/$EXECUTION_ID/submit" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Idempotency-Key: submit-550e8400-e29b-41d4-a716-446655440005' \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"expectedVersion\": $VERSION,
+    \"notes\": \"Ejecución completada desde la aplicación móvil\"
+  }"
+```
+
+Fragmento de respuesta feliz:
+
+```json
+{
+  "id": 310,
+  "state": "SUBMITTED",
+  "obligationStatus": "SUBMITTED",
+  "result": "COMPLETED",
+  "canEdit": false,
+  "submittedAt": "<INSTANTE_DEL_SERVIDOR>",
+  "version": 6
+}
+```
+
+Conservar la misma clave y el mismo contenido hasta recibir la respuesta. El replay exacto devuelve
+la misma ejecución; no se crea otra ni se reabre la enviada.
+
+### 8. Consultar un archivo privado
+
+PHOTO y SIGNATURE entregan `contentPath`. Se descarga siempre mediante la API autenticada:
+
+```bash
+curl "$BASE_URL/evidence/$EVIDENCE_ID/content" \
+  -H "Authorization: Bearer $TOKEN" \
+  --output evidencia.png
+```
+
+No se construye una URL de Supabase ni se persiste `storageKey` en Kotlin. La descarga puede
+realizarse antes o después del envío mientras el usuario conserve el alcance autorizado.
 
 ## Vista de ejecución
 
