@@ -75,10 +75,19 @@ public class FieldOperationController {
 
     @PostMapping("/executions/{id}/exceptions")
     @PreAuthorize("hasRole('OPERATOR')")
-    @Operation(summary="Registrar un impedimento sin completar ni evaluar la obligación", description="operationId identifica el reintento; stepId es opcional. No elimina pasos ni fotos pendientes.")
+    @Operation(summary="Registrar un impedimento sin completar ni evaluar la obligación",
+            description="Requiere Idempotency-Key por 7 días. operationId se conserva como referencia del cliente; stepId y evidenceIds son opcionales. Las evidencias deben pertenecer a la misma ejecución. La ejecución permanece IN_PROGRESS y no se crea una evaluación de cumplimiento.")
+    @ApiResponse(responseCode="200", description="Excepción registrada o replay idempotente")
+    @ApiResponse(responseCode="400", description="Clave, motivo o referencias inválidas", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="403", description="El operador no es propietario", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="404", description="Ejecución, paso o evidencia fuera del alcance", content=@Content(schema=@Schema(implementation=ApiError.class)))
+    @ApiResponse(responseCode="409", description="Versión, estado o replay incompatible", content=@Content(schema=@Schema(implementation=ApiError.class)))
     public FieldExecutionService.ExecutionView exception(@PathVariable Long id,
+            @Parameter(required=true, description="Clave idempotente de 8 a 100 caracteres")
+            @RequestHeader(value="Idempotency-Key", required=false) String idempotencyKey,
             @Valid @RequestBody FieldExecutionService.ExceptionCommand command, Principal principal) {
-        return executions.reportException(id, command, auth.currentUser(principal.getName()));
+        return executions.reportException(id, idempotencyKey, command,
+                auth.currentUser(principal.getName()));
     }
 
     @PostMapping(value="/executions/{id}/photo-requirements/{requirementId}/photo", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -351,7 +351,8 @@ Incluye `id`, `obligationId`, `operatorId`, `state`, `obligationStatus`, `result
 - Cada requisito versionado indica ID, requisito fuente, tipo, obligatoriedad, mínimo, máximo,
   posición, restricciones y su lista inmutable de evidencias. Los archivos muestran una ruta
   protegida; QR y ubicación muestran solo datos estructurados y metadatos de auditoría.
-- Cada impedimento incluye ID, paso opcional, motivo, descripción, actor, fecha y `operationId`.
+- Cada impedimento incluye ID, paso opcional, motivo, descripción, actor, fecha, `operationId`
+  y los `evidenceIds` inmutables que se vincularon al registrarlo.
 - Nunca se devuelve la clave del almacenamiento ni su ruta interna. `contentPath` es una ruta
   protegida de nuestra API, no una URL pública del proveedor.
 - En curso, `result` es `null`. El operario no selecciona ni envía un estado de resultado.
@@ -387,7 +388,7 @@ transacción. No se reabre una ejecución ni se concede una ampliación de plazo
 
 ## Inicio, progreso y concurrencia
 
-- Inicio y envío requieren una `Idempotency-Key` de 8 a 100 caracteres alfanuméricos o
+- Inicio, impedimentos y envío requieren una `Idempotency-Key` de 8 a 100 caracteres alfanuméricos o
   `. _ : -`. La clave se limita por empresa, operario y comando durante siete días.
 - En inicio, la obligación forma el contenido semántico; en envío lo forman la ejecución y las
   notas normalizadas. `expectedVersion` no forma parte de ese contenido. El mismo contenido
@@ -414,23 +415,35 @@ Ejemplo ilustrativo; los IDs, la versión y UUID deben proceder del flujo real:
   "description": "La puerta de acceso está cerrada con llave.",
   "stepId": 123,
   "operationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "evidenceIds": [456],
   "expectedVersion": 2
 }
+```
+
+```bash
+curl -X POST "$BASE_URL/executions/$EXECUTION_ID/exceptions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: exception-aaaaaaaa" \
+  -H "Content-Type: application/json" \
+  --data @exception.json
 ```
 
 Los motivos permitidos corresponden a los mockups: `AREA_CLOSED`, `MISSING_SUPPLIES`,
 `SAFETY_RISK`, `OTHER`. La descripción es obligatoria, de hasta 2000 caracteres.
 Sin `stepId`, el impedimento corresponde a la obligación completa; si se indica, debe ser
-un paso de esa obligación.
+un paso de esa obligación. `evidenceIds` es opcional y solo acepta evidencias ya registradas en
+esa misma ejecución; no admite duplicados, IDs inexistentes ni evidencias de otra ejecución.
 
-`operationId` es un UUID estable para el reintento del mismo registro, limitado por ejecución
-y, por sus permisos, por operario/empresa. El mismo contenido normalizado devuelve el
-impedimento original; un cambio de contenido con el mismo UUID devuelve
-`IDEMPOTENCY_KEY_MISMATCH`. La versión no forma parte de ese contenido semántico.
+`Idempotency-Key` conserva el resultado durante siete días bajo empresa, operario y comando.
+`operationId` continúa como UUID estable del cliente y evita duplicar el mismo registro dentro de
+la ejecución. El mismo contenido normalizado devuelve la ejecución con el impedimento original;
+un cambio de contenido con la misma clave o UUID devuelve `IDEMPOTENCY_KEY_MISMATCH`.
+`expectedVersion` no forma parte del contenido semántico.
 
 El impedimento no completa la obligación, no exime fotografías o pasos, no bloquea la posibilidad
 de continuar antes del límite y no genera una evaluación de cumplimiento. Permanece en el
-historial aunque el operario consiga después completar y enviar la ejecución.
+historial aunque el operario consiga después completar y enviar la ejecución. Mientras no se
+envíe, la ejecución conserva `IN_PROGRESS`; la presencia de `exceptions` es la señal revisable.
 
 ## Evidencia requerida: US-06
 

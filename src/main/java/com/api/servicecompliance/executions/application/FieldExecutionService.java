@@ -34,6 +34,7 @@ public class FieldExecutionService {
     private static final Logger LOG = LoggerFactory.getLogger(FieldExecutionService.class);
     private static final String START_EXECUTION = "START_EXECUTION";
     private static final String SUBMIT_EXECUTION = "SUBMIT_EXECUTION";
+    private static final String REPORT_EXCEPTION = "REPORT_EXCEPTION";
     private static final Duration IDEMPOTENCY_RETENTION = Duration.ofDays(7);
     private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("[A-Za-z0-9._:-]{8,100}");
     private final ObligationRepository obligations;
@@ -43,6 +44,7 @@ public class FieldExecutionService {
     private final ExecutionStepProgressRepository progress;
     private final EvidenceRepository evidence;
     private final OperationalExceptionRepository exceptions;
+    private final OperationalExceptionEvidenceRepository exceptionEvidence;
     private final PhotoStorage storage;
     private final PhotoValidator photos;
     private final Clock clock;
@@ -51,11 +53,13 @@ public class FieldExecutionService {
                                  ExecutionIdempotencyRepository idempotency,
                                  UserRepository users,
                                  ExecutionStepProgressRepository progress, EvidenceRepository evidence,
-                                 OperationalExceptionRepository exceptions, PhotoStorage storage,
+                                 OperationalExceptionRepository exceptions,
+                                 OperationalExceptionEvidenceRepository exceptionEvidence, PhotoStorage storage,
                                  PhotoValidator photos, Clock clock) {
         this.obligations=obligations; this.executions=executions; this.idempotency=idempotency; this.users=users;
         this.progress=progress;
-        this.evidence=evidence; this.exceptions=exceptions; this.storage=storage; this.photos=photos; this.clock=clock;
+        this.evidence=evidence; this.exceptions=exceptions; this.exceptionEvidence=exceptionEvidence;
+        this.storage=storage; this.photos=photos; this.clock=clock;
     }
 
     public StartResponse start(Long obligationId, String idempotencyKey, User actor) {
@@ -129,16 +133,33 @@ public class FieldExecutionService {
         return view(context.obligation(), context.execution());
     }
 
-    public ExecutionView reportException(Long executionId, ExceptionCommand command, User actor) {
+    public ExecutionView reportException(Long executionId, String idempotencyKey,
+                                         ExceptionCommand command, User actor) {
+        lockActor(actor);
         Context context=context(executionId, actor, true);
-        var previous=exceptions.findByExecutionIdAndOperationId(executionId, command.operationId());
+        validateIdempotencyKey(idempotencyKey);
+        List<Long> evidenceIds=normalizeEvidenceIds(command.evidenceIds());
         String description=command.description().trim();
+        Instant now=clock.instant();
+        idempotency.deleteByExpiresAtBefore(now);
+        String requestHash=hash(exceptionCanonical(executionId, command, description, evidenceIds));
+        Optional<Execution> replay=replay(actor, REPORT_EXCEPTION, idempotencyKey, requestHash);
+        if (replay.isPresent()) {
+            if (!replay.get().getId().equals(executionId)) {
+                throw conflict("IDEMPOTENCY_KEY_MISMATCH", "La clave ya fue usada con otra solicitud");
+            }
+            requireStoredException(executionId, command.operationId(), evidenceIds);
+            return view(context.obligation(), replay.get());
+        }
+        var previous=exceptions.findByExecutionIdAndOperationId(executionId, command.operationId());
         if (previous.isPresent()) {
             var stored=previous.get();
             if (stored.getReason()!=command.reason() || !Objects.equals(stored.getStepId(), command.stepId())
-                    || !stored.getDescription().equals(description)) {
+                    || !stored.getDescription().equals(description)
+                    || !storedEvidenceIds(stored.getId()).equals(evidenceIds)) {
                 throw conflict("IDEMPOTENCY_KEY_MISMATCH", "La operación ya fue usada con otro impedimento");
             }
+            record(actor, REPORT_EXCEPTION, idempotencyKey, requestHash, executionId, now);
             return view(context.obligation(), context.execution());
         }
         editable(context);
@@ -147,13 +168,58 @@ public class FieldExecutionService {
                 .noneMatch(step -> step.getId().equals(command.stepId()))) {
             throw new ResourceNotFoundException("Paso no encontrado en esta obligación");
         }
+        validateEvidenceReferences(executionId, evidenceIds);
         Instant reportedAt=clock.instant();
         editable(context, reportedAt);
-        exceptions.save(new OperationalException(executionId, command.stepId(), command.reason(), description,
-                actor.getId(), reportedAt, command.operationId()));
+        OperationalException reported=exceptions.saveAndFlush(new OperationalException(executionId,
+                command.stepId(), command.reason(), description, actor.getId(), reportedAt,
+                command.operationId()));
+        exceptionEvidence.saveAll(evidenceIds.stream()
+                .map(evidenceId -> new OperationalExceptionEvidence(reported.getId(), evidenceId, executionId))
+                .toList());
         context.execution().exceptionReported(reportedAt);
+        record(actor, REPORT_EXCEPTION, idempotencyKey, requestHash, executionId, reportedAt);
         executions.flush();
         return view(context.obligation(), context.execution());
+    }
+
+    private List<Long> normalizeEvidenceIds(List<Long> requested) {
+        if (requested==null || requested.isEmpty()) return List.of();
+        List<Long> normalized=requested.stream().sorted().toList();
+        if (new HashSet<>(normalized).size()!=normalized.size()) {
+            throw new FieldValidationException("Datos inválidos",
+                    Map.of("evidenceIds", List.of("no debe contener referencias repetidas")));
+        }
+        return normalized;
+    }
+
+    private void validateEvidenceReferences(Long executionId, List<Long> evidenceIds) {
+        if (evidenceIds.isEmpty()) return;
+        List<Evidence> referenced=evidence.findAllById(evidenceIds);
+        if (referenced.size()!=evidenceIds.size()
+                || referenced.stream().anyMatch(item -> !item.getExecutionId().equals(executionId))) {
+            throw new ResourceNotFoundException("Evidencia no encontrada en esta ejecución");
+        }
+    }
+
+    private void requireStoredException(Long executionId, UUID operationId, List<Long> evidenceIds) {
+        OperationalException stored=exceptions.findByExecutionIdAndOperationId(executionId, operationId)
+                .orElseThrow(() -> new IllegalStateException("Idempotency record without exception"));
+        if (!storedEvidenceIds(stored.getId()).equals(evidenceIds)) {
+            throw conflict("IDEMPOTENCY_KEY_MISMATCH", "La clave ya fue usada con otra solicitud");
+        }
+    }
+
+    private List<Long> storedEvidenceIds(Long exceptionId) {
+        return exceptionEvidence.findByExceptionIdOrderByEvidenceIdAsc(exceptionId).stream()
+                .map(OperationalExceptionEvidence::getEvidenceId).toList();
+    }
+
+    private String exceptionCanonical(Long executionId, ExceptionCommand command, String description,
+                                      List<Long> evidenceIds) {
+        return executionId+"|"+command.reason()+"|"+description+"|"
+                +(command.stepId()==null ? "" : command.stepId())+"|"+command.operationId()+"|"
+                +evidenceIds.stream().map(String::valueOf).collect(Collectors.joining(","));
     }
 
     public ExecutionView attachPhoto(Long executionId, Long requirementId, MultipartFile file,
@@ -396,15 +462,23 @@ public class FieldExecutionService {
                                 .map(RequiredEvidenceService::view).toList()))
                 .toList();
         boolean expired=obligation.isExpired(clock.instant());
+        List<OperationalException> storedExceptions=
+                exceptions.findByExecutionIdOrderByReportedAtAscIdAsc(execution.getId());
+        Map<Long,List<Long>> evidenceByException=exceptionEvidence.findByExceptionIdIn(storedExceptions.stream()
+                        .map(OperationalException::getId).toList()).stream()
+                .collect(Collectors.groupingBy(OperationalExceptionEvidence::getExceptionId,
+                        Collectors.mapping(OperationalExceptionEvidence::getEvidenceId,
+                                Collectors.collectingAndThen(Collectors.toList(), ids -> ids.stream().sorted().toList()))));
         return new ExecutionView(execution.getId(), obligation.getId(), execution.getOperatorId(),
                 execution.getState(), expired ? ObligationStatus.OVERDUE : obligation.getStatus(),
                 execution.getResult(), execution.getStartedAt(), execution.getSubmittedAt(), obligation.getStartsAt(),
                 obligation.getDueAt(), Obligation.TIMEZONE, execution.getVersion(),
                 execution.getUpdatedAt(), execution.getState()==ExecutionState.IN_PROGRESS && !expired,
                 execution.getNotes(), steps, required, evidenceRequirements,
-                exceptions.findByExecutionIdOrderByReportedAtAscIdAsc(execution.getId()).stream().map(e ->
+                storedExceptions.stream().map(e ->
                         new ExceptionView(e.getId(), e.getStepId(), e.getReason(), e.getDescription(),
-                                e.getReportedBy(), e.getReportedAt(), e.getOperationId())).toList());
+                                e.getReportedBy(), e.getReportedAt(), e.getOperationId(),
+                                evidenceByException.getOrDefault(e.getId(), List.of()))).toList());
     }
 
     private record Context(Obligation obligation, Execution execution) {}
@@ -413,6 +487,7 @@ public class FieldExecutionService {
     public record SubmitCommand(@NotNull @PositiveOrZero Long expectedVersion, @Size(max=2000) String notes) {}
     public record ExceptionCommand(@NotNull ExceptionReason reason, @NotBlank @Size(max=2000) String description,
                                    @Positive Long stepId, @NotNull UUID operationId,
+                                   List<@Positive Long> evidenceIds,
                                    @NotNull @PositiveOrZero Long expectedVersion) {}
     public record StepView(Long id, String title, String instructions, int position, boolean completed, Instant updatedAt) {}
     public record PhotoView(Long id, String title, String description, int position, Long evidenceId,
@@ -422,7 +497,8 @@ public class FieldExecutionService {
                                           Map<String, String> constraints,
                                           List<RequiredEvidenceService.EvidenceView> evidence) {}
     public record ExceptionView(Long id, Long stepId, ExceptionReason reason, String description,
-                                 Long reportedBy, Instant reportedAt, UUID operationId) {}
+                                 Long reportedBy, Instant reportedAt, UUID operationId,
+                                 List<Long> evidenceIds) {}
     public record ExecutionView(Long id, Long obligationId, Long operatorId, ExecutionState state,
                                  ObligationStatus obligationStatus, ExecutionResult result, Instant startedAt,
                                  Instant submittedAt, Instant startsAt, Instant dueAt, String timezone, long version,
