@@ -5,7 +5,8 @@ Preparación previa por ADMIN: [happy path del administrador](admin-flow.md).
 Este documento complementa el [detalle de obligación](obligation-detail.md). Implementa el flujo
 online acordado: detalle, inicio, recuperación del avance, fotografías, impedimentos y envío.
 Mantiene un centro por cuenta y los permisos existentes. La activación/generación de planes,
-las pantallas de login/listado y US-08 no forman parte de este incremento.
+las pantallas de login/listado no forman parte de este incremento. La variante recuperable para
+trabajo sin conexión está documentada en [sincronización offline](offline-sync.md).
 
 ## Integración con el trabajo del compañero
 

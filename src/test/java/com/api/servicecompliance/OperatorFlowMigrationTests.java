@@ -67,7 +67,7 @@ class OperatorFlowMigrationTests {
             plan=id(statement,"INSERT INTO service_plans(company_id,service_id,site_id,start_date,end_date,timezone,state,created_by,created_at,updated_at) "
                     +"VALUES (1,1,1,'2030-01-01','2030-01-31','America/Lima','DRAFT',"+actor+",CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id");
         }
-        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(8);
+        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(9);
         flyway(schema,"latest").validate();
         try (var connection=connection(schema); var statement=connection.createStatement()) {
             try (var result=statement.executeQuery("SELECT version, success FROM flyway_schema_history WHERE version IN ('10','11','12') ORDER BY installed_rank")) {
@@ -177,6 +177,26 @@ class OperatorFlowMigrationTests {
                 assertThat(result.next()).isTrue();
                 assertThat(result.getLong(1)).isZero();
             }
+        }
+    }
+
+    @Test void offlineSyncMigrationScopesOperationsAndValidatesTerminalResults() throws Exception {
+        String schema=schema();
+        assertThat(flyway(schema,"19").migrate().migrationsExecuted).isEqualTo(19);
+        assertThat(flyway(schema,"20").migrate().migrationsExecuted).isEqualTo(1);
+        flyway(schema,"20").validate();
+        try(var connection=connection(schema);var statement=connection.createStatement()) {
+            long operator=operator(statement); UUID operation=UUID.randomUUID();
+            String synced="INSERT INTO offline_sync_operations(company_id,actor_id,client_operation_id,operation_type,request_hash,outcome,result_code,resource_type,resource_id,current_version,created_at,expires_at) VALUES (1,"
+                    +operator+",'"+operation+"','START_EXECUTION','"+"a".repeat(64)
+                    +"','SYNCED','SYNCED','EXECUTION',123,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '30 days')";
+            statement.executeUpdate(synced); rejects(statement,synced,"23505");
+            rejects(statement,"INSERT INTO offline_sync_operations(company_id,actor_id,client_operation_id,operation_type,request_hash,outcome,result_code,created_at,expires_at) VALUES (1,"
+                    +operator+",'"+UUID.randomUUID()+"','START_EXECUTION','"+"b".repeat(64)
+                    +"','RETRYABLE','TEMPORARY_FAILURE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '30 days')","23514");
+            rejects(statement,"INSERT INTO offline_sync_operations(company_id,actor_id,client_operation_id,operation_type,request_hash,outcome,result_code,resource_type,created_at,expires_at) VALUES (1,"
+                    +operator+",'"+UUID.randomUUID()+"','START_EXECUTION','"+"c".repeat(64)
+                    +"','REQUIRES_ATTENTION','VALIDATION_ERROR','EXECUTION',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '30 days')","23514");
         }
     }
 
