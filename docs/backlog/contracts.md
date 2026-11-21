@@ -11,8 +11,9 @@ Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and
 Decisions 6 and 8 were approved for `BE-US-01`; the definition-only portions of decisions 7 and 10
 were approved for `BE-US-02` on 2026-11-05. The BE-US-05 portions of decisions 8 and 9 were
 approved on 2026-11-15. Decision 10 was fully approved for `BE-US-06` on 2026-11-16. Unapproved
-portions of decisions 7, 9, and 11–18 remain draft. The `BE-US-07` exception refinement of
-decisions 8–10 was approved on 2026-11-17. Preserve
+portions of decisions 7, 9, and 12–18 remain draft. The `BE-US-07` exception refinement of
+decisions 8–10 was approved on 2026-11-17, and decision 11 was approved for `BE-US-08` on
+2026-11-21. Preserve
 `/api/v1` compatibility or document a consumer migration path.
 
 ## Proposed defaults for review
@@ -123,7 +124,24 @@ The remaining schedule syntax, content allowlist, report performance target, and
     replacement; evidence follows execution/case retention. Downloads reauthorize company, site,
     execution, and owner without exposing storage keys. The legacy photo endpoint remains available
     for pre-existing configured obligations. Affected: `BE-US-02`, `06`, `10`, `21`.
-11. **Offline sync.** Set batch limits, client references/dependency order, transaction boundaries, per-item outcomes, conflict and retry codes, and interruption recovery. Affected: `BE-US-08`, `23`.
+11. **Offline sync.** Approved for `BE-US-08`: an authenticated `OPERATOR` sends multipart
+    `POST /api/v1/sync/batches` with one JSON manifest and optional binary parts. A batch contains
+    at most 50 operations, 10 files, and 25 MiB. It supports starting an execution, updating a
+    step, attaching evidence, reporting an exception, and submitting an execution. Each operation
+    has a UUID `clientOperationId`, scoped by company and actor and retained for 30 days; exact
+    replay returns its terminal result and changed semantic content returns
+    `IDEMPOTENCY_KEY_MISMATCH`.
+
+    Explicit `dependsOn`, `executionRef`, and `evidenceRefs` let the server topologically order
+    offline work without client knowledge of server IDs. Each item runs in its own transaction, so
+    successful operations survive a later failure or interrupted request. A valid envelope returns
+    HTTP 200 with one result per input item in manifest order: `SYNCED`, `RETRYABLE`, or
+    `REQUIRES_ATTENTION`, a stable reason code, and `currentVersion` when applicable. Transient
+    infrastructure failures are retryable and are not persisted as terminal outcomes; business,
+    validation, authorization, missing-resource, and version conflicts require attention and are
+    retained. A corrected attention item therefore uses a new `clientOperationId`. Batch identity
+    is diagnostic only; item identity controls recovery. Synchronization outcome remains separate
+    from Execution state and Compliance Result. Affected: `BE-US-08`, `23`.
 
 ## Review, follow-up, and reporting
 
@@ -168,14 +186,15 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05 through 2026-11-17; decisions 1–6, the BE-US-01 and
+- Approval date and revision: 2026-11-05 through 2026-11-21; decisions 1–6, the BE-US-01 and
   BE-US-05 portions of decision 8, and the BE-US-05 portion of decision 9,
   including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI
   login, Stripe-backed seat rules, inclusive Lima plan dates, seven-day plan-creation
   idempotency, the BE-US-04 assigned-work synchronization refinement of decision 12, and the
   approved BE-US-05 online execution lifecycle, the complete BE-US-06 evidence contract, and the
-  BE-US-07 exception refinement approved on 2026-11-17.
+  BE-US-07 exception refinement approved on 2026-11-17, and the BE-US-08 offline synchronization
+  contract approved on 2026-11-21.
 - Approved references: User approval for `BE-US-17`, `BE-US-20`, `BE-US-01`, `BE-US-05`,
-  `BE-US-06`, and `BE-US-07`; decision 7 and the remaining portions of decisions 9 and 11–18
+  `BE-US-06`, `BE-US-07`, and `BE-US-08`; decision 7 and the remaining portions of decisions 9 and 12–18
   remain pending.
 - First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.
