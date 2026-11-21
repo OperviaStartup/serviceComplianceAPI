@@ -52,6 +52,7 @@ class OperatorFlowIntegrationTests {
     @Autowired EvidenceRepository evidence;
     @Autowired ExecutionStepProgressRepository progress;
     @Autowired OperationalExceptionRepository exceptions;
+    @Autowired OperationalExceptionEvidenceRepository exceptionEvidence;
     @Autowired FieldExecutionService flow;
     @Autowired MutableClock clock;
     @Autowired TestPhotos storage;
@@ -84,6 +85,10 @@ class OperatorFlowIntegrationTests {
         for(User user:fixtureUsers) {
             for(var obligation:obligations.findByAssignedOperatorId(user.getId())) {
                 for(var execution:executions.findByObligationId(obligation.getId())) {
+                    var exceptionIds=exceptions.findByExecutionIdOrderByReportedAtAscIdAsc(execution.getId())
+                            .stream().map(com.api.servicecompliance.executions.domain.model.OperationalException::getId)
+                            .toList();
+                    exceptionEvidence.deleteAll(exceptionEvidence.findByExceptionIdIn(exceptionIds));
                     exceptions.deleteAll(exceptions.findByExecutionIdOrderByReportedAtAscIdAsc(execution.getId()));
                     progress.deleteAll(progress.findByExecutionId(execution.getId()));
                     evidence.deleteAll(evidence.findByExecutionId(execution.getId()));
@@ -179,12 +184,16 @@ class OperatorFlowIntegrationTests {
         JsonNode api=response(get("/api-docs"),200);
         JsonNode start=api.path("paths").path("/api/v1/obligations/{id}/execution").path("post");
         JsonNode submit=api.path("paths").path("/api/v1/executions/{id}/submit").path("post");
+        JsonNode reportException=api.path("paths").path("/api/v1/executions/{id}/exceptions").path("post");
         assertThat(start.path("parameters")).anyMatch(parameter ->
                 parameter.path("name").asText().equals("Idempotency-Key") && parameter.path("required").asBoolean());
         assertThat(submit.path("parameters")).anyMatch(parameter ->
                 parameter.path("name").asText().equals("Idempotency-Key") && parameter.path("required").asBoolean());
+        assertThat(reportException.path("parameters")).anyMatch(parameter ->
+                parameter.path("name").asText().equals("Idempotency-Key") && parameter.path("required").asBoolean());
         assertThat(start.path("responses").has("409")).isTrue();
         assertThat(submit.path("responses").has("409")).isTrue();
+        assertThat(reportException.path("responses").has("409")).isTrue();
         JsonNode evidenceOperation=api.path("paths")
                 .path("/api/v1/executions/{id}/evidence-requirements/{requirementId}/evidence").path("post");
         assertThat(evidenceOperation.path("parameters")).anyMatch(parameter ->
@@ -334,23 +343,74 @@ class OperatorFlowIntegrationTests {
 
     @Test void exceptionIsSeparateIdempotentAndAllowsContinuationWithoutWaivingRequirements() throws Exception {
         JsonNode state=start(); UUID operation=UUID.randomUUID();
+        String exceptionKey="exception-"+UUID.randomUUID();
         ObjectNode command=exceptionCommand(state,operation);
         JsonNode reported=response(post(exceptionPath(state)).header("Authorization",ownerToken)
+                .header("Idempotency-Key",exceptionKey)
                 .contentType(MediaType.APPLICATION_JSON).content(command.toString()),200);
         assertThat(reported.path("exceptions").size()).isEqualTo(1);
         assertThat(reported.path("state").asText()).isEqualTo("IN_PROGRESS");
         assertThat(reported.path("result").isNull()).isTrue();
         JsonNode replay=response(post(exceptionPath(state)).header("Authorization",ownerToken)
+                .header("Idempotency-Key",exceptionKey)
                 .contentType(MediaType.APPLICATION_JSON).content(command.toString()),200);
         assertThat(replay.path("version")).isEqualTo(reported.path("version"));
         command.put("description","Changed payload");
         assertThat(response(post(exceptionPath(state)).header("Authorization",ownerToken)
+                .header("Idempotency-Key",exceptionKey)
                 .contentType(MediaType.APPLICATION_JSON).content(command.toString()),409).path("code").asText())
                 .isEqualTo("IDEMPOTENCY_KEY_MISMATCH");
         assertThat(submit(reported,400).path("details").has("photoRequirements")).isTrue();
         state=step(reported,0,true); state=step(state,1,true);
         state=upload(state,0,png(1)); state=upload(state,1,png(2));
         assertThat(submit(state,200).path("exceptions").size()).isEqualTo(1);
+    }
+
+    @Test void exceptionReferencesOnlyImmutableEvidenceFromItsExecution() throws Exception {
+        JsonNode first=upload(start(),0,png(1));
+        long evidenceId=first.path("photoRequirements").get(0).path("evidenceId").asLong();
+        ObjectNode command=exceptionCommand(first,UUID.randomUUID());
+        command.putArray("evidenceIds").add(evidenceId);
+        JsonNode reported=response(post(exceptionPath(first)).header("Authorization",ownerToken)
+                .header("Idempotency-Key","exception-"+UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(command.toString()),200);
+        assertThat(reported.path("state").asText()).isEqualTo("IN_PROGRESS");
+        assertThat(reported.path("result").isNull()).isTrue();
+        assertThat(reported.path("exceptions").get(0).path("evidenceIds").get(0).asLong())
+                .isEqualTo(evidenceId);
+
+        command=exceptionCommand(reported,UUID.randomUUID());
+        command.putArray("evidenceIds").add(evidenceId).add(evidenceId);
+        assertThat(response(post(exceptionPath(reported)).header("Authorization",ownerToken)
+                .header("Idempotency-Key","exception-"+UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(command.toString()),400)
+                .path("details").path("evidenceIds").isArray()).isTrue();
+
+        obligationId=createObligation("Second reception");
+        startKey="start-"+UUID.randomUUID();
+        JsonNode second=start();
+        command=exceptionCommand(second,UUID.randomUUID());
+        command.putArray("evidenceIds").add(evidenceId);
+        response(post(exceptionPath(second)).header("Authorization",ownerToken)
+                .header("Idempotency-Key","exception-"+UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(command.toString()),404);
+    }
+
+    @Test void exceptionRequiresOwnershipAndTenantScope() throws Exception {
+        JsonNode state=start();
+        ObjectNode command=exceptionCommand(state,UUID.randomUUID());
+        String key="exception-"+UUID.randomUUID();
+        response(post(exceptionPath(state)).header("Authorization",supervisorToken)
+                .header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON)
+                .content(command.toString()),403);
+        response(post(exceptionPath(state)).header("Authorization",token(other))
+                .header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON)
+                .content(command.toString()),403);
+        response(post(exceptionPath(state)).header("Authorization",token(foreign))
+                .header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON)
+                .content(command.toString()),404);
+        assertThat(exceptions.findByExecutionIdOrderByReportedAtAscIdAsc(state.path("id").asLong()))
+                .isEmpty();
     }
 
     @Test void photoCannotBeReplacedAndExactRetryDoesNotUploadTwice() throws Exception {
@@ -441,6 +501,7 @@ class OperatorFlowIntegrationTests {
         assertThat(stepRequest(state,0,false,state.path("version").asLong(),409).path("code").asText())
                 .isEqualTo("EXECUTION_ALREADY_SUBMITTED");
         response(post(exceptionPath(state)).header("Authorization",ownerToken).contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key","exception-"+UUID.randomUUID())
                 .content(exceptionCommand(state,UUID.randomUUID()).toString()),409);
     }
 
@@ -464,8 +525,12 @@ class OperatorFlowIntegrationTests {
 
     @Test void invalidExceptionReasonsAndMissingMultipartParametersReturnControlledErrors() throws Exception {
         JsonNode state=start(); ObjectNode command=exceptionCommand(state,UUID.randomUUID());
+        assertThat(response(post(exceptionPath(state)).header("Authorization",ownerToken)
+                .contentType(MediaType.APPLICATION_JSON).content(command.toString()),400)
+                .path("details").path("idempotencyKey").isArray()).isTrue();
         command.put("reason","NOT_ALLOWED");
-        response(post(exceptionPath(state)).header("Authorization",ownerToken).contentType(MediaType.APPLICATION_JSON)
+        response(post(exceptionPath(state)).header("Authorization",ownerToken)
+                .header("Idempotency-Key","exception-"+UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON)
                 .content(command.toString()),400);
         var missingVersion=multipart("/api/v1/executions/"+state.path("id").asLong()+"/photo-requirements/"
                 +state.path("photoRequirements").get(0).path("id").asLong()+"/photo")

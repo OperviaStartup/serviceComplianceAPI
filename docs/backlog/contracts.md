@@ -11,7 +11,8 @@ Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and
 Decisions 6 and 8 were approved for `BE-US-01`; the definition-only portions of decisions 7 and 10
 were approved for `BE-US-02` on 2026-11-05. The BE-US-05 portions of decisions 8 and 9 were
 approved on 2026-11-15. Decision 10 was fully approved for `BE-US-06` on 2026-11-16. Unapproved
-portions of decisions 7, 9, and 11–18 remain draft. Preserve
+portions of decisions 7, 9, and 11–18 remain draft. The `BE-US-07` exception refinement of
+decisions 8–10 was approved on 2026-11-17. Preserve
 `/api/v1` compatibility or document a consumer migration path.
 
 ## Proposed defaults for review
@@ -82,6 +83,14 @@ The remaining schedule syntax, content allowlist, report performance target, and
    semantic payload. Exact replay returns the same execution, a changed payload returns
    `IDEMPOTENCY_KEY_MISMATCH`, and database uniqueness plus obligation locking prevents duplicate
    business effects. The legacy `/api/v1/executions` contract remains unchanged.
+
+   Approved `BE-US-07` refinement: reporting an exception requires the same 8–100 character
+   `Idempotency-Key`, scoped by company, actor, and `REPORT_EXCEPTION` for seven days. The
+   semantic payload is execution, reason, normalized description, optional step, retained client
+   `operationId`, and sorted evidence references; `expectedVersion` is excluded. Exact replay
+   returns the execution containing the original exception, while changed content returns
+   `IDEMPOTENCY_KEY_MISMATCH`. `operationId` remains in the body for existing clients and also
+   prevents duplicate exception records within one execution.
 9. **Execution lifecycle.** Approved for `BE-US-05`: an assigned obligation without an Execution
    is `NOT_STARTED`; persisted online Executions transition only `IN_PROGRESS → SUBMITTED` under
    server authority. Submission records `COMPLETED` as the operational result, not a compliance
@@ -89,6 +98,12 @@ The remaining schedule syntax, content allowlist, report performance target, and
    commands. V1 has no cancellation, reopening, or second execution attempt. Reporting an Exception
    remains separate and leaves the Execution `IN_PROGRESS`; sync and compliance use separate state.
    Affected: `BE-US-05`, `07`, `08`, `09`.
+
+   Approved `BE-US-07` refinement: an exception is reviewable through the immutable exception
+   collection returned with the execution; it does not introduce an `EXCEPTED` execution state,
+   waive incomplete work, submit the execution, or create a Compliance Result. It may reference
+   only evidence already attached to that same execution. Missing, duplicate, or cross-execution
+   references are rejected without exposing foreign evidence.
 10. **Evidence.** Approved definition contract for `BE-US-02`: reuse the stable evidence codes
     `PHOTO`, `QR_CODE`, `LOCATION`, and `SIGNATURE`; record required/optional status, minimum and
     maximum count, and allowlisted type-specific validation metadata. Approved `BE-US-06`
@@ -153,12 +168,14 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05 through 2026-11-16; decisions 1–6, the BE-US-01 and
+- Approval date and revision: 2026-11-05 through 2026-11-17; decisions 1–6, the BE-US-01 and
   BE-US-05 portions of decision 8, and the BE-US-05 portion of decision 9,
   including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI
   login, Stripe-backed seat rules, inclusive Lima plan dates, seven-day plan-creation
   idempotency, the BE-US-04 assigned-work synchronization refinement of decision 12, and the
-  approved BE-US-05 online execution lifecycle, and the complete BE-US-06 evidence contract.
-- Approved references: User approval for `BE-US-17`, `BE-US-20`, `BE-US-01`, `BE-US-05`, and
-  `BE-US-06`; decision 7 and the remaining portions of decisions 9 and 11–18 remain pending.
+  approved BE-US-05 online execution lifecycle, the complete BE-US-06 evidence contract, and the
+  BE-US-07 exception refinement approved on 2026-11-17.
+- Approved references: User approval for `BE-US-17`, `BE-US-20`, `BE-US-01`, `BE-US-05`,
+  `BE-US-06`, and `BE-US-07`; decision 7 and the remaining portions of decisions 9 and 11–18
+  remain pending.
 - First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.

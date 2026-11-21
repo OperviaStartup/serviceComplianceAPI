@@ -67,7 +67,7 @@ class OperatorFlowMigrationTests {
             plan=id(statement,"INSERT INTO service_plans(company_id,service_id,site_id,start_date,end_date,timezone,state,created_by,created_at,updated_at) "
                     +"VALUES (1,1,1,'2030-01-01','2030-01-31','America/Lima','DRAFT',"+actor+",CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id");
         }
-        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(7);
+        assertThat(flyway(schema,"latest").migrate().migrationsExecuted).isEqualTo(8);
         flyway(schema,"latest").validate();
         try (var connection=connection(schema); var statement=connection.createStatement()) {
             try (var result=statement.executeQuery("SELECT version, success FROM flyway_schema_history WHERE version IN ('10','11','12') ORDER BY installed_rank")) {
@@ -135,6 +135,47 @@ class OperatorFlowMigrationTests {
             statement.executeUpdate("DELETE FROM evidences WHERE id="+stored);
             try(var result=statement.executeQuery("SELECT count(*) FROM evidence_idempotency WHERE evidence_id="+stored)) {
                 assertThat(result.next()).isTrue(); assertThat(result.getLong(1)).isZero();
+            }
+        }
+    }
+
+    @Test void exceptionEvidenceMigrationEnforcesTheSameExecutionAndRetainsReferencedEvidence() throws Exception {
+        String schema=schema();
+        assertThat(flyway(schema,"18").migrate().migrationsExecuted).isEqualTo(18);
+        long exceptionId;
+        long execution;
+        long evidence;
+        long foreignEvidence;
+        try(var connection=connection(schema);var statement=connection.createStatement()) {
+            long operator=operator(statement);
+            long obligation=obligation(statement,operator);
+            execution=id(statement,"INSERT INTO executions(obligation_id,operator_id,state,started_at,executed_at,updated_at) VALUES ("
+                    +obligation+","+operator+",'IN_PROGRESS','2030-01-01T15:00:00Z','2030-01-01T15:00:00Z','2030-01-01T15:00:00Z') RETURNING id");
+            evidence=id(statement,"INSERT INTO evidences(execution_id,type,url,created_at) VALUES ("
+                    +execution+",'PHOTO','https://example.test/evidence.png',CURRENT_TIMESTAMP) RETURNING id");
+            exceptionId=id(statement,"INSERT INTO operational_exceptions(execution_id,reason,description,reported_by,reported_at,operation_id) VALUES ("
+                    +execution+",'AREA_CLOSED','Door is locked',"+operator+",CURRENT_TIMESTAMP,'"
+                    +UUID.randomUUID()+"') RETURNING id");
+            long otherObligation=obligation(statement,operator);
+            long otherExecution=id(statement,"INSERT INTO executions(obligation_id,operator_id,state,started_at,executed_at,updated_at) VALUES ("
+                    +otherObligation+","+operator+",'IN_PROGRESS','2030-01-01T15:00:00Z','2030-01-01T15:00:00Z','2030-01-01T15:00:00Z') RETURNING id");
+            foreignEvidence=id(statement,"INSERT INTO evidences(execution_id,type,url,created_at) VALUES ("
+                    +otherExecution+",'PHOTO','https://example.test/foreign.png',CURRENT_TIMESTAMP) RETURNING id");
+        }
+        assertThat(flyway(schema,"19").migrate().migrationsExecuted).isEqualTo(1);
+        flyway(schema,"19").validate();
+        try(var connection=connection(schema);var statement=connection.createStatement()) {
+            String reference="INSERT INTO operational_exception_evidence(exception_id,evidence_id,execution_id) VALUES ("
+                    +exceptionId+","+evidence+","+execution+")";
+            statement.executeUpdate(reference);
+            rejects(statement,reference,"23505");
+            rejects(statement,"INSERT INTO operational_exception_evidence(exception_id,evidence_id,execution_id) VALUES ("
+                    +exceptionId+","+foreignEvidence+","+execution+")","23503");
+            rejects(statement,"DELETE FROM evidences WHERE id="+evidence,"23503");
+            statement.executeUpdate("DELETE FROM operational_exceptions WHERE id="+exceptionId);
+            try(var result=statement.executeQuery("SELECT count(*) FROM operational_exception_evidence WHERE exception_id="+exceptionId)) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getLong(1)).isZero();
             }
         }
     }
