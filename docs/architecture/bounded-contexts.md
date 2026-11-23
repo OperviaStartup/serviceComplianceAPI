@@ -13,7 +13,7 @@ another context merely because it consumes that context's identifiers or capabil
 | Service Planning | Supporting | Convert approved operating conditions into Service Plans, Obligation Definitions, and Evidence Requirements. | Not implemented; first package will be `com.api.servicecompliance.serviceplanning`. |
 | Field Operations | Supporting | Materialize and assign Service Obligations and record Execution, Evidence, Exceptions, and offline synchronization. | Partial baseline in `com.api.servicecompliance.obligations` and `com.api.servicecompliance.executions`. |
 | Compliance Management | Core Domain | Evaluate Executions against applicable criteria and preserve Compliance Results, observations, Corrective Actions, and Compliance Case history. | Not implemented; first package will be `com.api.servicecompliance.compliance`. |
-| Reporting & Follow-up | Supporting | Project operational and compliance state for queries, alerts, personal history, notifications, and Compliance Reports. | Not implemented; first package will be `com.api.servicecompliance.reporting`. |
+| Reporting & Follow-up | Supporting | Project operational and compliance state for queries, alerts, personal history, notifications, and Compliance Reports. | `com.api.servicecompliance.reporting` exposes the scoped operational status projection. |
 
 `com.api.servicecompliance.shared` is a technical/shared-kernel area, not a bounded context. It may
 contain stable primitives and HTTP infrastructure, but it must not become the owner of business rules.
@@ -51,6 +51,11 @@ contain stable primitives and HTTP infrastructure, but it must not become the ow
    context still enforces its own tenant, role, scope, and resource-ownership rules server-side.
 6. Existing direct coupling is treated as migration debt and removed only when an owning ticket
    touches that boundary; this architecture decision does not authorize a broad rewrite.
+
+The operational-status query uses the versioned, read-only database projection
+`operational_status_facts_v1`: Field Operations supplies obligation and execution facts, and
+Service Planning supplies the service identity for the captured plan version. Authorization and
+status derivation are applied by Reporting on every query.
 
 ## Approval record
 

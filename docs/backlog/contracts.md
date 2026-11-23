@@ -155,6 +155,28 @@ The remaining schedule syntax, content allowlist, report performance target, and
     A separate opaque change cursor returns ordered `UPSERT` and `REMOVED` changes; reassignment
     records removal for the former operator and upsert for the new operator. Company, site, and
     current operator come only from the authenticated account.
+
+    `BE-US-09` implementation contract: `GET /api/v1/operational-status` is a supervisor-only
+    read within the authenticated company's site. Optional query parameters are `serviceId`,
+    `siteId`, `operatorId`, `fromDate`, `toDate`, `status`, `limit` (1–100, default 50),
+    and `cursor`. A different site returns an empty result. The service is resolved from
+    the obligation's original plan version, including superseded plans. Unassigned obligations
+    are excluded. Assigned legacy/manual obligations without a source plan have no `serviceId`,
+    and are excluded by a service filter. A legacy execution does not imply submission.
+
+    Inclusive Lima dates match the local day containing `startsAt`, or `dueAt` when the
+    obligation has no execution window. With a versioned/configured execution window, overdue
+    begins exactly at `dueAt`, computed from the authoritative server clock. An exception on
+    the modern execution takes precedence even after submission; submitted and in-progress
+    executions also retain precedence over overdue in this projection.
+
+    The response exposes `items`, `counts` (all five status keys), `total`, `hasMore`,
+    `nextCursor`, and `asOf`. Counts cover all matching obligations before pagination.
+    Pages order by `(startsAt ?? dueAt, id)`. Cursors are signed and bound to the supervisor,
+    scope and filters. They preserve the clock used for overdue across pages. Each request
+    reads its rows and counts from the same database statement; subsequent pages reflect live
+    execution and assignment changes. An item added behind the cursor appears on a fresh
+    traversal. The existing operator APIs keep their existing status semantics.
 13. **Review snapshot.** Decide whether evidence freezes on submission or review returns a versioned snapshot under concurrent changes. Affected: `BE-US-10`, `11`.
 14. **Compliance Case.** Define case creation, eligible outcomes, decision criteria, reevaluation reason, append-only versions, and concurrent evaluation. Affected: `BE-US-11`, `13`, `14`.
 15. **Corrective actions.** Define eligibility, multiplicity, eligible assignees, transition matrix, verification, and target-date rules. Affected: `BE-US-12`, `21`.
@@ -176,6 +198,7 @@ Access JWTs expire after 30 minutes by default and are checked against the activ
 | List assigned obligations | Own assignments | Own assignments | Own assignments | Query is restricted by authenticated user, company, and site. |
 | Register execution or evidence | Denied | Denied | Allowed | Only the current assigned operator in the obligation's company and site. |
 | Read execution or evidence | Allowed | Allowed | Allowed for owner | ADMIN/SUPERVISOR require matching company and site; OPERATOR must also own the execution. |
+| Read operational status | Denied | Allowed | Denied | The supervisor's current company and site restrict both rows and aggregates. |
 
 Executions and evidence derive their tenant and site boundary from the owning obligation. The legacy migration assigns every existing user and obligation to company `1` and site `1`; execution and evidence links remain unchanged.
 
