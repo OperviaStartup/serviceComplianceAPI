@@ -13,7 +13,7 @@ another context merely because it consumes that context's identifiers or capabil
 | Service Planning | Supporting | Convert approved operating conditions into Service Plans, Obligation Definitions, and Evidence Requirements. | Not implemented; first package will be `com.api.servicecompliance.serviceplanning`. |
 | Field Operations | Supporting | Materialize and assign Service Obligations and record Execution, Evidence, Exceptions, and offline synchronization. | Partial baseline in `com.api.servicecompliance.obligations` and `com.api.servicecompliance.executions`. |
 | Compliance Management | Core Domain | Evaluate Executions against applicable criteria and preserve Compliance Results, observations, Corrective Actions, and Compliance Case history. | Not implemented; first package will be `com.api.servicecompliance.compliance`. |
-| Reporting & Follow-up | Supporting | Project operational and compliance state for queries, alerts, personal history, notifications, and Compliance Reports. | Not implemented; first package will be `com.api.servicecompliance.reporting`. |
+| Reporting & Follow-up | Supporting | Project operational and compliance state for queries, alerts, personal history, notifications, and Compliance Reports. | Operational-status projection begins in `com.api.servicecompliance.reporting`. |
 
 `com.api.servicecompliance.shared` is a technical/shared-kernel area, not a bounded context. It may
 contain stable primitives and HTTP infrastructure, but it must not become the owner of business rules.
