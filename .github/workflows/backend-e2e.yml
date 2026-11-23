@@ -90,6 +90,8 @@ jobs:
             test-class: com.api.servicecompliance.OfflineSyncIntegrationTests
           - flow: reporting
             test-class: com.api.servicecompliance.OperationalStatusIntegrationTests
+          - flow: compliance-review
+            test-class: com.api.servicecompliance.ComplianceReviewIntegrationTests
     services:
       postgres:
         image: postgres:16-alpine

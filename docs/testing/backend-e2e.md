@@ -8,10 +8,11 @@ desarrollador ni credenciales externas.
 
 1. `full-regression` ejecuta toda la suite sobre la base H2 aislada de pruebas. En conjunto recorre
    los flujos implementados de identidad, planificación, generación/asignación, operación de campo,
-   sincronización offline y reporting.
+   sincronización offline, reporting y revisión de cumplimiento.
 2. `postgres-migrations` ejecuta todos los `*MigrationTests` sobre PostgreSQL 16 y Flyway.
 3. `postgres-critical-flows` usa una base nueva por job de matriz para assigned-work, operator,
-   offline-sync y reporting. Esto evita que fixtures históricos de una suite contaminen otra.
+   offline-sync, reporting y compliance-review. Esto evita que fixtures históricos de una suite
+   contaminen otra.
 4. `api-e2e` ejecuta por separado `*E2ETests` sobre PostgreSQL y un servidor Spring real en puerto aleatorio.
    Este gate hace visible una rotura del happy path HTTP aunque el resto de la regresión también
    tenga fallos.
