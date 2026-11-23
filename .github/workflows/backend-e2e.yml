@@ -92,6 +92,8 @@ jobs:
             test-class: com.api.servicecompliance.OperationalStatusIntegrationTests
           - flow: compliance-review
             test-class: com.api.servicecompliance.ComplianceReviewIntegrationTests
+          - flow: compliance-decision
+            test-class: com.api.servicecompliance.ComplianceDecisionIntegrationTests
     services:
       postgres:
         image: postgres:16-alpine
