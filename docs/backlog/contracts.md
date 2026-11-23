@@ -14,7 +14,7 @@ approved on 2026-11-15. Decision 10 was fully approved for `BE-US-06` on 2026-11
 portions of decisions 7, 9, and 14–18 remain draft. The `BE-US-07` exception refinement of
 decisions 8–10 was approved on 2026-11-17, and decision 11 was approved for `BE-US-08` on
 2026-11-21. Decision 12 was approved for `BE-US-09` on 2026-11-22, and decision 13 was approved
-for `BE-US-10` on 2026-11-23. Preserve
+for `BE-US-10` on 2026-11-23. Decision 14 was approved for `BE-US-11` on 2026-11-23. Preserve
 `/api/v1` compatibility or document a consumer migration path.
 
 ## Proposed defaults for review
@@ -181,7 +181,16 @@ The remaining schedule syntax, content allowlist, report performance target, and
     evidence metadata without private storage keys, exceptions, and explicit missing requirements.
     Missing information never creates a Compliance Result. Downloads continue through the existing
     authorized evidence-content endpoint. Affected: `BE-US-10`, `11`.
-14. **Compliance Case.** Define case creation, eligible outcomes, decision criteria, reevaluation reason, append-only versions, and concurrent evaluation. Affected: `BE-US-11`, `13`, `14`.
+14. **Compliance Case.** Approved for `BE-US-11`: create one case per obligation at the first
+    evaluation. A complete, version-bound review may produce `COMPLIANT` only with all criteria
+    passing and no exceptions; `EXCEPTION_ACCEPTED` requires every exception to be explicitly
+    accepted and no failed criteria; `NON_COMPLIANT` requires a failed criterion or rejected
+    exception. Missing information never creates a result. Results append immutable versions with
+    predecessor and mandatory reevaluation reason after the first decision. Each version retains
+    structured criteria, findings, explanation, actor/server time, source review/execution, and
+    plan/definition versions. The command uses an expected case version; the obligation lock
+    serializes creation and appends, and a stale writer receives `VERSION_CONFLICT`. Execution,
+    Evidence, and Exceptions remain unchanged. Affected: `BE-US-11`, `13`, `14`.
 15. **Corrective actions.** Define eligibility, multiplicity, eligible assignees, transition matrix, verification, and target-date rules. Affected: `BE-US-12`, `21`.
 16. **Timeline.** Define event ownership, type/payload evolution, stable ID, cursor, and equal-timestamp tie-breaker. Affected: `BE-US-14`.
 17. **Alerts.** Define recipient resolution, channels, rule configuration, occurrence identity, deduplication, delivery retry, and escalation. Affected: `BE-US-16`, `23`.

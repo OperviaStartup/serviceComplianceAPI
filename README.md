@@ -10,6 +10,9 @@ Consulte [el contrato, permisos, compatibilidad y límites del incremento](docs/
 El [contrato del flujo del operario](docs/field-operations/operator-flow.md) agrega inicio,
 avance, fotografías privadas, impedimentos, envío y vencimiento. La conexión a la instancia
 compartida y la configuración del almacenamiento real se verifican por separado.
+El flujo de Compliance Management continúa con la
+[revisión consistente](docs/compliance/review.md) y el
+[registro versionado de resultados](docs/compliance/decision.md).
 
 ## Tecnologías
 
