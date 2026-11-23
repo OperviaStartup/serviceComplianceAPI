@@ -50,9 +50,8 @@ class ServicePlanActivationIntegrationTests {
     @BeforeEach
     void setUp() {
         clean();
-        sites.deleteAll();
         users.deleteAll();
-        sites.save(new SiteScope(1L, 1L, "Legacy site"));
+        if (!sites.existsById(1L)) sites.save(new SiteScope(1L, 1L, "Legacy site"));
         administrator = users.save(new User("Administrator", "activation-admin@test.com",
                 passwordEncoder.encode("Password123!"), Role.ADMIN, 1L, 1L));
         serviceId = companyServices.save(new CompanyService(1L, "CLEANING", "Cleaning")).getId();
@@ -62,7 +61,6 @@ class ServicePlanActivationIntegrationTests {
     void tearDown() {
         clean();
         users.deleteAll();
-        sites.deleteAll();
     }
 
     @Test

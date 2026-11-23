@@ -1,0 +1,172 @@
+name: Backend regression and E2E
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-regression:
+    name: All backend flows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Run the complete regression suite
+        run: ./gradlew --no-daemon test
+      - name: Upload regression reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-regression-reports
+          path: build/reports/tests/test
+          if-no-files-found: ignore
+
+  postgres-migrations:
+    name: PostgreSQL migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: field_operations_test
+          POSTGRES_USER: service_user
+          POSTGRES_PASSWORD: service_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U service_user -d field_operations_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FIELD_OPERATIONS_TEST_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/field_operations_test
+      FIELD_OPERATIONS_TEST_DB_USER: service_user
+      FIELD_OPERATIONS_TEST_DB_PASSWORD: service_password
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Validate every versioned migration contract
+        run: ./gradlew --no-daemon test --tests '*MigrationTests'
+      - name: Upload migration reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-migration-reports
+          path: build/reports/tests/test
+          if-no-files-found: ignore
+
+  postgres-critical-flows:
+    name: PostgreSQL ${{ matrix.flow }} flow
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flow: assigned-work
+            test-class: com.api.servicecompliance.AssignedObligationIntegrationTests
+          - flow: operator
+            test-class: com.api.servicecompliance.OperatorFlowIntegrationTests
+          - flow: offline-sync
+            test-class: com.api.servicecompliance.OfflineSyncIntegrationTests
+          - flow: reporting
+            test-class: com.api.servicecompliance.OperationalStatusIntegrationTests
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: field_operations_test
+          POSTGRES_USER: service_user
+          POSTGRES_PASSWORD: service_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U service_user -d field_operations_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://127.0.0.1:5432/field_operations_test
+      SPRING_DATASOURCE_USERNAME: service_user
+      SPRING_DATASOURCE_PASSWORD: service_password
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Run isolated PostgreSQL flow
+        run: ./gradlew --no-daemon test --tests '${{ matrix.test-class }}'
+      - name: Upload flow report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-${{ matrix.flow }}-report
+          path: build/reports/tests/test
+          if-no-files-found: ignore
+
+  api-e2e:
+    name: HTTP E2E happy path
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: field_operations_test
+          POSTGRES_USER: service_user
+          POSTGRES_PASSWORD: service_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U service_user -d field_operations_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://127.0.0.1:5432/field_operations_test
+      SPRING_DATASOURCE_USERNAME: service_user
+      SPRING_DATASOURCE_PASSWORD: service_password
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Run HTTP E2E flow
+        run: ./gradlew --no-daemon test --tests '*E2ETests'
+      - name: Upload E2E reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-e2e-reports
+          path: build/reports/tests/test
+          if-no-files-found: ignore

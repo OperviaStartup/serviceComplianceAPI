@@ -51,9 +51,8 @@ class ObligationDefinitionIntegrationTests {
     @BeforeEach
     void setUp() {
         clean();
-        sites.deleteAll();
         users.deleteAll();
-        sites.save(new SiteScope(1L, 1L, "Legacy site"));
+        if (!sites.existsById(1L)) sites.save(new SiteScope(1L, 1L, "Legacy site"));
         administrator = users.save(new User("Administrator", "definition-admin@test.com",
                 passwordEncoder.encode("Password123!"), Role.ADMIN, 1L, 1L));
         CompanyService cleaning = companyServices.save(new CompanyService(1L, "CLEANING", "Cleaning"));
@@ -66,7 +65,6 @@ class ObligationDefinitionIntegrationTests {
     void tearDown() {
         clean();
         users.deleteAll();
-        sites.deleteAll();
     }
 
     @Test

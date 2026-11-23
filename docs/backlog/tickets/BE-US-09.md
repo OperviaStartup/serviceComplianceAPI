@@ -44,7 +44,7 @@ Cross-cutting contracts in [the draft contract pack](../contracts.md) require ap
 ## Progress evidence
 
 - Status: `IN_REVIEW`; readiness: `READY` under the approved BE-US-09 refinement of decision 12.
-- Commits: `NONE`
+- Commits: `30c04fe` (implementation); CI and final evidence follow in the branch closeout commit.
 - Checks: Java 17 full H2 suite `115/115` with `0` failures (`11` PostgreSQL-only migration tests
   skipped); operational-status PostgreSQL integration `3/3`; PostgreSQL migration group `11/11`;
   assigned-work, operator, offline-sync, reporting, and HTTP E2E PostgreSQL classes pass in isolated

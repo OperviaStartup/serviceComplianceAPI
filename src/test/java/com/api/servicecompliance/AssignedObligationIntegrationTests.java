@@ -16,6 +16,8 @@ import com.api.servicecompliance.shared.domain.Role;
 import com.api.servicecompliance.serviceplanning.domain.model.ObligationDefinition;
 import com.api.servicecompliance.serviceplanning.domain.model.RecurrenceType;
 import com.api.servicecompliance.serviceplanning.domain.model.ServicePlan;
+import com.api.servicecompliance.serviceplanning.domain.model.CompanyService;
+import com.api.servicecompliance.serviceplanning.domain.repository.CompanyServiceRepository;
 import com.api.servicecompliance.serviceplanning.domain.repository.ObligationDefinitionRepository;
 import com.api.servicecompliance.serviceplanning.domain.repository.ServicePlanRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,6 +57,7 @@ class AssignedObligationIntegrationTests {
     @Autowired UserRepository users;
     @Autowired ServicePlanRepository plans;
     @Autowired ObligationDefinitionRepository definitions;
+    @Autowired CompanyServiceRepository companyServices;
     @Autowired PasswordEncoder passwords;
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
@@ -63,11 +66,14 @@ class AssignedObligationIntegrationTests {
 
     private User operator;
     private User otherOperator;
+    private CompanyService companyService;
 
     @BeforeEach
     void setUp() {
         operator = saveUser("Operator", Role.OPERATOR);
         otherOperator = saveUser("Other operator", Role.OPERATOR);
+        companyService = companyServices.saveAndFlush(new CompanyService(1L,
+                "ASSIGNED-" + UUID.randomUUID(), "Assigned flow"));
     }
 
     @AfterEach
@@ -76,6 +82,8 @@ class AssignedObligationIntegrationTests {
         obligations.deleteAll();
         definitions.deleteAll();
         plans.deleteAll();
+        if (companyService != null && companyService.getId() != null)
+            companyServices.findById(companyService.getId()).ifPresent(companyServices::delete);
         sessions.deleteAll();
         families.deleteAll();
         users.deleteAll();
@@ -190,7 +198,7 @@ class AssignedObligationIntegrationTests {
 
     private Obligation saveGenerated(Long operatorId, Instant startsAt) {
         LocalDate occurrenceDate = LocalDate.ofInstant(startsAt, java.time.ZoneId.of("America/Lima"));
-        ServicePlan plan = plans.saveAndFlush(new ServicePlan(1L, 1L, 1L, occurrenceDate,
+        ServicePlan plan = plans.saveAndFlush(new ServicePlan(1L, companyService.getId(), 1L, occurrenceDate,
                 occurrenceDate.plusDays(1), operatorId, Instant.now()));
         ObligationDefinition definition = definitions.saveAndFlush(new ObligationDefinition(plan.getId(), 1L,
                 "Clean lobby", "Use approved product", "No visible residue", RecurrenceType.ONCE,
