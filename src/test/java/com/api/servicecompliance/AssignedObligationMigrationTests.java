@@ -20,7 +20,7 @@ class AssignedObligationMigrationTests {
     void migrationRecordsAssignmentReassignmentAndStatusChangesAtomically() throws Exception {
         String schema = "assigned_sync_" + UUID.randomUUID().toString().replace("-", "");
         Flyway flyway = Flyway.configure().dataSource(url(), username(), password()).schemas(schema)
-                .locations("classpath:db/migration").load();
+                .locations("classpath:db/migration").target("15").load();
         assertThat(flyway.migrate().migrationsExecuted).isEqualTo(15);
         flyway.validate();
 

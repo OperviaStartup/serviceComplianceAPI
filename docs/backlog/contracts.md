@@ -11,9 +11,9 @@ Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and
 Decisions 6 and 8 were approved for `BE-US-01`; the definition-only portions of decisions 7 and 10
 were approved for `BE-US-02` on 2026-11-05. The BE-US-05 portions of decisions 8 and 9 were
 approved on 2026-11-15. Decision 10 was fully approved for `BE-US-06` on 2026-11-16. Unapproved
-portions of decisions 7, 9, and 12–18 remain draft. The `BE-US-07` exception refinement of
+portions of decisions 7, 9, and 13–18 remain draft. The `BE-US-07` exception refinement of
 decisions 8–10 was approved on 2026-11-17, and decision 11 was approved for `BE-US-08` on
-2026-11-21. Preserve
+2026-11-21. Decision 12 was approved for `BE-US-09` on 2026-11-22. Preserve
 `/api/v1` compatibility or document a consumer migration path.
 
 ## Proposed defaults for review
@@ -155,6 +155,21 @@ The remaining schedule syntax, content allowlist, report performance target, and
     A separate opaque change cursor returns ordered `UPSERT` and `REMOVED` changes; reassignment
     records removal for the former operator and upsert for the new operator. Company, site, and
     current operator come only from the authenticated account.
+
+    Approved `BE-US-09` refinement: `GET /api/v1/operational-obligations` is restricted to active
+    `SUPERVISOR` accounts and always fixes company and site from the authenticated scope; an
+    explicitly different site is forbidden. It accepts optional service, inclusive `America/Lima`
+    period, operator, and multi-status filters. Only assigned operational work is projected.
+    Historical obligations without a source plan remain visible when no service filter is applied
+    and are excluded by a service filter.
+
+    Canonical precedence is `EXCEPTED > SUBMITTED > OVERDUE > IN_PROGRESS > ASSIGNED`.
+    `EXCEPTED` is derived from at least one recorded operational exception and remains visible even
+    after submission. `OVERDUE` starts at the exclusive execution-window end (`asOf >= dueAt`) and
+    does not replace exception or submitted precedence. Rows and per-status counts share the exact
+    authorized filters, predicate, and `asOf` inside one repeatable-read query transaction. Pages
+    use an opaque filter- and actor-bound keyset ordered by operational start and obligation ID,
+    with a maximum size of 100; the first page fixes `asOf` for subsequent cursors.
 13. **Review snapshot.** Decide whether evidence freezes on submission or review returns a versioned snapshot under concurrent changes. Affected: `BE-US-10`, `11`.
 14. **Compliance Case.** Define case creation, eligible outcomes, decision criteria, reevaluation reason, append-only versions, and concurrent evaluation. Affected: `BE-US-11`, `13`, `14`.
 15. **Corrective actions.** Define eligibility, multiplicity, eligible assignees, transition matrix, verification, and target-date rules. Affected: `BE-US-12`, `21`.
@@ -186,15 +201,16 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05 through 2026-11-21; decisions 1–6, the BE-US-01 and
+- Approval date and revision: 2026-11-05 through 2026-11-22; decisions 1–6, the BE-US-01 and
   BE-US-05 portions of decision 8, and the BE-US-05 portion of decision 9,
   including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI
   login, Stripe-backed seat rules, inclusive Lima plan dates, seven-day plan-creation
   idempotency, the BE-US-04 assigned-work synchronization refinement of decision 12, and the
   approved BE-US-05 online execution lifecycle, the complete BE-US-06 evidence contract, and the
   BE-US-07 exception refinement approved on 2026-11-17, and the BE-US-08 offline synchronization
-  contract approved on 2026-11-21.
+  contract approved on 2026-11-21, and the BE-US-09 operational-status contract approved on
+  2026-11-22.
 - Approved references: User approval for `BE-US-17`, `BE-US-20`, `BE-US-01`, `BE-US-05`,
-  `BE-US-06`, `BE-US-07`, and `BE-US-08`; decision 7 and the remaining portions of decisions 9 and 12–18
+  `BE-US-06`, `BE-US-07`, `BE-US-08`, and `BE-US-09`; decision 7 and the remaining portions of decisions 9 and 13–18
   remain pending.
 - First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.

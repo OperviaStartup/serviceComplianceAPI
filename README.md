@@ -49,6 +49,7 @@ serviceComplianceAPI/
     │   │   ├── authentication/
     │   │   ├── obligations/
     │   │   ├── executions/
+    │   │   ├── reporting/
     │   │   └── shared/
     │   └── resources/
     │       ├── application.properties
@@ -155,6 +156,10 @@ En Windows:
 La API queda disponible en `http://localhost:8080`.
 
 ## Pruebas y build
+
+Los pull requests hacia `develop` ejecutan la suite completa con PostgreSQL 16 y un gate HTTP E2E
+independiente mediante [backend-e2e.yml](.github/workflows/backend-e2e.yml). Consulte
+[la guía de verificación](docs/testing/backend-e2e.md) para el alcance y la ejecución local.
 
 Linux/macOS:
 

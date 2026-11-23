@@ -4,6 +4,8 @@ import com.api.servicecompliance.authentication.domain.model.SiteScope;
 import com.api.servicecompliance.authentication.domain.model.User;
 import com.api.servicecompliance.authentication.domain.repository.SiteScopeRepository;
 import com.api.servicecompliance.authentication.domain.repository.UserRepository;
+import com.api.servicecompliance.authentication.infrastructure.persistence.RefreshFamilyRepository;
+import com.api.servicecompliance.authentication.infrastructure.persistence.RefreshSessionRepository;
 import com.api.servicecompliance.serviceplanning.application.ServicePlanService;
 import com.api.servicecompliance.serviceplanning.domain.model.CompanyService;
 import com.api.servicecompliance.serviceplanning.domain.repository.CompanyServiceRepository;
@@ -49,6 +51,8 @@ class ServicePlanIntegrationTests {
     @Autowired ServicePlanRepository plans;
     @Autowired ServicePlanIdempotencyRepository idempotencyRecords;
     @Autowired ServicePlanService servicePlans;
+    @Autowired RefreshSessionRepository refreshSessions;
+    @Autowired RefreshFamilyRepository refreshFamilies;
 
     private User administrator;
     private CompanyService cleaning;
@@ -56,9 +60,8 @@ class ServicePlanIntegrationTests {
     @BeforeEach
     void setUp() {
         cleanServicePlanningData();
-        sites.deleteAll();
         users.deleteAll();
-        sites.save(new SiteScope(1L, 1L, "Legacy site"));
+        if (!sites.existsById(1L)) sites.save(new SiteScope(1L, 1L, "Legacy site"));
         administrator = users.save(new User("Plan Administrator", "plan-admin@test.com",
                 passwordEncoder.encode("Password123!"), Role.ADMIN, 1L, 1L));
         cleaning = companyServices.save(new CompanyService(1L, "CLEANING", "Cleaning"));
@@ -68,7 +71,6 @@ class ServicePlanIntegrationTests {
     void tearDown() {
         cleanServicePlanningData();
         users.deleteAll();
-        sites.deleteAll();
     }
 
     @Test
@@ -238,6 +240,8 @@ class ServicePlanIntegrationTests {
     }
 
     private void cleanServicePlanningData() {
+        refreshSessions.deleteAll();
+        refreshFamilies.deleteAll();
         idempotencyRecords.deleteAll();
         plans.deleteAll();
         companyServices.deleteAll();
