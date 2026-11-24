@@ -191,7 +191,16 @@ The remaining schedule syntax, content allowlist, report performance target, and
     plan/definition versions. The command uses an expected case version; the obligation lock
     serializes creation and appends, and a stale writer receives `VERSION_CONFLICT`. Execution,
     Evidence, and Exceptions remain unchanged. Affected: `BE-US-11`, `13`, `14`.
-15. **Corrective actions.** Define eligibility, multiplicity, eligible assignees, transition matrix, verification, and target-date rules. Affected: `BE-US-12`, `21`.
+15. **Corrective actions.** Approved for `BE-US-12`: the latest Compliance Result must be
+    `NON_COMPLIANT`; a case may have multiple actions, each assigned to one active `OPERATOR` in
+    the same company and site. The lifecycle is `ASSIGNED -> ATTENTION_SUBMITTED -> CLOSED` or
+    `ATTENTION_SUBMITTED -> RETURNED -> ATTENTION_SUBMITTED`; `CLOSED` is terminal and only a
+    scoped supervisor may verify and close. Commands use an expected version and stale writers
+    receive `VERSION_CONFLICT`. Every transition appends an immutable event with states, actor,
+    reason and server time. The target date is inclusive in `America/Lima`; `OVERDUE` begins at
+    00:00 the following day only while `ASSIGNED` or `RETURNED`. Later reevaluations never mutate
+    existing actions. `BE-US-12` owns creation, query, aggregate and history; `BE-US-21` owns the
+    public submit/return/verify endpoints and corrective evidence. Affected: `BE-US-12`, `21`.
 16. **Timeline.** Define event ownership, type/payload evolution, stable ID, cursor, and equal-timestamp tie-breaker. Affected: `BE-US-14`.
 17. **Alerts.** Define recipient resolution, channels, rule configuration, occurrence identity, deduplication, delivery retry, and escalation. Affected: `BE-US-16`, `23`.
 18. **Reports.** Define export format, cutoff/timezone, consistent snapshot, asynchronous job retention, download authorization, size limit, and performance target. Affected: `BE-US-15`.
