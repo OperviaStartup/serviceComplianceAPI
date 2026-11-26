@@ -14,6 +14,29 @@ El flujo de Compliance Management continúa con la
 [revisión consistente](docs/compliance/review.md) y el
 [registro versionado de resultados](docs/compliance/decision.md).
 
+### Historial personal del operario
+
+`GET /api/v1/executions` consulta las ejecuciones enviadas e históricas de la cuenta
+`OPERATOR` autenticada. Empresa, sede y propietario se validan en el servidor; la
+reasignación de una obligación no transfiere el historial privado a otro operario.
+
+Admite `fromDate` y `toDate` inclusivas en `America/Lima`, búsqueda literal por título
+con `query` (hasta 200 caracteres), `reviewStatus`, `cursor` y `limit` (1–100; por defecto 50).
+La respuesta `{ items, nextCursor, hasMore, asOf }` se ordena por fecha de registro e ID
+descendentes. Las páginas conservan el mismo corte de envíos y evaluaciones; cambiar
+cuenta o filtros requiere iniciar una consulta nueva.
+
+Cada elemento separa `state`, `result`, `synchronizationState` y `complianceResult`.
+Sin evaluación explícita corresponde **Pendiente de revisión**, incluso con resultado
+`COMPLETED`. Los filtros canónicos son `PENDING_REVIEW`, `COMPLIANT`,
+`EXCEPTION_ACCEPTED` y `NON_COMPLIANT`. La última decisión del supervisor para esa ejecución
+se incluye con versión, fecha y explicación. No se incluyen ejecuciones en curso ni
+borradores exclusivos del dispositivo.
+
+La migración V23 agrega únicamente índices. `OperatorHistoryIntegrationTests` y
+`OperatorHistoryMigrationTests` verifican autorización, aislamiento, filtros, paginación,
+reevaluaciones y migración desde V22. Los contratos de escritura existentes no cambian.
+
 ## Tecnologías
 
 ![Java](https://img.shields.io/badge/Java-17-2d2d2d)
