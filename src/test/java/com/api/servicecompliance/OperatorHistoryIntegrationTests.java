@@ -24,6 +24,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -48,6 +49,7 @@ class OperatorHistoryIntegrationTests {
     @Autowired ComplianceResultRepository results;
     @Autowired UserRepository users;
     @Autowired SiteScopeRepository sites;
+    @Autowired JdbcTemplate jdbc;
     @Autowired PasswordEncoder passwords;
     @Autowired JwtService jwt;
     @Autowired MockMvc mvc;
@@ -168,7 +170,14 @@ class OperatorHistoryIntegrationTests {
         outsideExecution.submit("Outside", NOW.minusSeconds(80)); executions.saveAndFlush(outsideExecution);
         assertThat(query(null, null, null, null, null, 50, operator).items()).extracting(item -> item.id()).containsExactly(own.getId());
         assertThat(query(null, null, null, null, null, 50, other).items()).isEmpty();
-        User foreignCompany = user(Role.OPERATOR, 2L, 207L);
+        if (Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE UPPER(table_name) = 'COMPANIES')
+                """, Boolean.class))) {
+            jdbc.update("INSERT INTO companies (id, name) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM companies WHERE id = ?)",
+                    2L, "Foreign company", 2L);
+        }
+        if (!sites.existsById(208L)) sites.saveAndFlush(new SiteScope(208L, 2L, "Foreign site"));
+        User foreignCompany = user(Role.OPERATOR, 2L, 208L);
         assertThat(query(null, null, null, null, null, 50, foreignCompany).items()).isEmpty();
     }
 
