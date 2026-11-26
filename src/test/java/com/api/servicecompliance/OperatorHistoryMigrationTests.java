@@ -31,7 +31,7 @@ class OperatorHistoryMigrationTests {
                     RETURNING id
                     """.formatted(obligation, operator));
         }
-        assertThat(flyway(schema, "24").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway(schema, "24").migrate().migrationsExecuted).isEqualTo(2);
         flyway(schema, "24").validate();
         try (Connection connection = connection(schema); var statement = connection.createStatement()) {
             try (var row = statement.executeQuery("SELECT state,result,notes FROM executions WHERE id=" + execution)) {
@@ -51,7 +51,7 @@ class OperatorHistoryMigrationTests {
 
     @Test void installsAllMigrationsOnAnEmptySchema() {
         String schema = schema();
-        assertThat(flyway(schema, "24").migrate().migrationsExecuted).isEqualTo(23);
+        assertThat(flyway(schema, "24").migrate().migrationsExecuted).isEqualTo(24);
         flyway(schema, "24").validate();
     }
 

@@ -188,6 +188,9 @@ Los pull requests hacia `develop` ejecutan la suite completa con PostgreSQL 16 y
 independiente mediante [backend-e2e.yml](.github/workflows/backend-e2e.yml). Consulte
 [la guía de verificación](docs/testing/backend-e2e.md) para el alcance y la ejecución local.
 
+El flujo de creación y consulta de acciones correctivas está documentado en
+[Corrective actions](docs/compliance/corrective-actions.md).
+
 Linux/macOS:
 
 ```bash
