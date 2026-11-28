@@ -93,7 +93,7 @@ class CorrectiveActionIntegrationTests {
         originalResult = results.saveAndFlush(new ComplianceResult(
                 complianceCase.getId(), execution.getId(), decisionVersion, null,
                 ComplianceOutcome.NON_COMPLIANT, "execution-v0", 0,
-                null, null, null, null, "Evidence did not meet the criterion", null,
+                null, null, null, null, "Evidence did not meet the criterion", null, null,
                 supervisor.getId(), NOW, List.of(), List.of()));
     }
 
@@ -165,7 +165,7 @@ class CorrectiveActionIntegrationTests {
         results.saveAndFlush(new ComplianceResult(
                 complianceCase.getId(), originalResult.getExecutionId(), 2, originalResult.getId(),
                 ComplianceOutcome.COMPLIANT, "execution-v0", 0,
-                null, null, null, null, "Reevaluation passed", "Evidence corrected",
+                null, null, null, null, "Reevaluation passed", "Evidence corrected", null,
                 supervisor.getId(), NOW.plusSeconds(60), List.of(), List.of()));
 
         assertThatThrownBy(() -> service.create(complianceCase.getId(), command(operator), supervisor))

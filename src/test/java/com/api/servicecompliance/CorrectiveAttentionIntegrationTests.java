@@ -111,7 +111,7 @@ class CorrectiveAttentionIntegrationTests {
         originalResult = results.saveAndFlush(new ComplianceResult(
                 complianceCase.getId(), execution.getId(), decisionVersion, null,
                 ComplianceOutcome.NON_COMPLIANT, "execution-v0", 0,
-                null, null, null, null, "Evidence did not meet the criterion", null,
+                null, null, null, null, "Evidence did not meet the criterion", null, null,
                 supervisor.getId(), NOW, List.of(), List.of()));
         actionId = actionsService.create(complianceCase.getId(),
                 new CorrectiveActionService.CreateCorrectiveActionCommand(

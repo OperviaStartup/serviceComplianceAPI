@@ -12,7 +12,8 @@ avance, fotografías privadas, impedimentos, envío y vencimiento. La conexión 
 compartida y la configuración del almacenamiento real se verifican por separado.
 El flujo de Compliance Management continúa con la
 [revisión consistente](docs/compliance/review.md) y el
-[registro versionado de resultados](docs/compliance/decision.md).
+[registro versionado de resultados](docs/compliance/decision.md). El feedback posterior queda en
+[observaciones del cliente](docs/compliance/client-observations.md) sin reescribir decisiones previas.
 
 ## Tecnologías
 

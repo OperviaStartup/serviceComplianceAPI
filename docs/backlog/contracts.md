@@ -192,6 +192,16 @@ The remaining schedule syntax, content allowlist, report performance target, and
     plan/definition versions. The command uses an expected case version; the obligation lock
     serializes creation and appends, and a stale writer receives `VERSION_CONFLICT`. Execution,
     Evidence, and Exceptions remain unchanged. Affected: `BE-US-11`, `13`, `14`.
+
+    Approved `BE-US-13` refinement: only an active scoped `SUPERVISOR` records client
+    observations. Origin is `EMAIL`, `PHONE`, `SITE_VISIT`, or `OTHER`; observed dates use
+    `America/Lima` and cannot be future dates. Observations are append-only. An amendment creates
+    a complete new revision linked to the previous one, with mandatory reason and expected
+    revision; only the latest revision may be amended and the case association never changes.
+    Recording an observation does not reevaluate a case. A separate endpoint reuses the BE-US-11
+    decision rules and appends a result whose server-generated reason and `sourceObservationId`
+    identify the observation revision. Each revision can produce at most one result. Unknown or
+    out-of-company/site resources return `404`.
 15. **Corrective actions.** Approved for `BE-US-12`: the latest Compliance Result must be
     `NON_COMPLIANT`; a case may have multiple actions, each assigned to one active `OPERATOR` in
     the same company and site. The lifecycle is `ASSIGNED -> ATTENTION_SUBMITTED -> CLOSED` or
@@ -241,7 +251,7 @@ Executions and evidence derive their tenant and site boundary from the owning ob
 ## Approval record
 
 - Decision owner: User direction in this conversation.
-- Approval date and revision: 2026-11-05 through 2026-11-23; decisions 1–6, the BE-US-01 and
+- Approval date and revision: 2026-11-05 through 2026-11-27; decisions 1–6, the BE-US-01 and
   BE-US-05 portions of decision 8, and the BE-US-05 portion of decision 9,
   including 30-minute access JWTs, seven-day rotating refresh tokens, Resend invitations, DNI
   login, Stripe-backed seat rules, inclusive Lima plan dates, seven-day plan-creation
@@ -249,8 +259,10 @@ Executions and evidence derive their tenant and site boundary from the owning ob
   approved BE-US-05 online execution lifecycle, the complete BE-US-06 evidence contract, and the
   BE-US-07 exception refinement approved on 2026-11-17, and the BE-US-08 offline synchronization
   contract approved on 2026-11-21, and the BE-US-09 operational-status contract approved on
-  2026-11-22, and the BE-US-10 frozen-review contract approved on 2026-11-23.
+  2026-11-22, the BE-US-10 frozen-review contract approved on 2026-11-23, and the BE-US-13
+  observation contract approved on 2026-11-27.
 - Approved references: User approval for `BE-US-17`, `BE-US-20`, `BE-US-01`, `BE-US-05`,
-  `BE-US-06`, `BE-US-07`, `BE-US-08`, `BE-US-09`, and `BE-US-10`; decision 7 and the remaining portions of decisions 9 and 14–18
+  `BE-US-06`, `BE-US-07`, `BE-US-08`, `BE-US-09`, `BE-US-10`, `BE-US-11`, `BE-US-12`,
+  `BE-US-13`, and `BE-US-21`; decision 7 and the remaining portions of decisions 9 and 16–18
   remain pending.
 - First implementation gate: `BE-US-17` is merged into `develop`; `BE-US-20` may proceed on `feature/be-us-20-user-management` against the approved local Stripe entitlement contract.

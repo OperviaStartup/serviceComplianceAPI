@@ -6,11 +6,14 @@ import com.api.servicecompliance.authentication.domain.repository.SiteScopeRepos
 import com.api.servicecompliance.authentication.domain.repository.UserRepository;
 import com.api.servicecompliance.authentication.infrastructure.security.JwtService;
 import com.api.servicecompliance.compliance.application.ComplianceDecisionService;
+import com.api.servicecompliance.compliance.application.ClientObservationService;
+import com.api.servicecompliance.compliance.domain.model.ClientObservationOrigin;
 import com.api.servicecompliance.compliance.domain.model.ComplianceOutcome;
 import com.api.servicecompliance.compliance.domain.model.CriterionStatus;
 import com.api.servicecompliance.compliance.domain.model.ExceptionDisposition;
 import com.api.servicecompliance.compliance.domain.repository.ComplianceCaseRepository;
 import com.api.servicecompliance.compliance.domain.repository.ComplianceResultRepository;
+import com.api.servicecompliance.compliance.domain.repository.ClientObservationRepository;
 import com.api.servicecompliance.executions.domain.model.Evidence;
 import com.api.servicecompliance.executions.domain.model.ExceptionReason;
 import com.api.servicecompliance.executions.domain.model.Execution;
@@ -70,6 +73,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -80,6 +84,8 @@ class ComplianceDecisionIntegrationTests {
     private static final Instant NOW = Instant.parse("2031-03-04T15:00:00Z");
 
     @Autowired ComplianceDecisionService decisions;
+    @Autowired ClientObservationService clientObservations;
+    @Autowired ClientObservationRepository clientObservationRepository;
     @Autowired ComplianceCaseRepository cases;
     @Autowired ComplianceResultRepository results;
     @Autowired ObligationRepository obligations;
@@ -125,6 +131,12 @@ class ComplianceDecisionIntegrationTests {
                         .reversed())
                 .forEach(results::delete);
         results.flush();
+        clientObservationRepository.findAll().stream()
+                .sorted(java.util.Comparator.comparingInt(
+                        com.api.servicecompliance.compliance.domain.model.ClientObservation::getRevision)
+                        .reversed())
+                .forEach(clientObservationRepository::delete);
+        clientObservationRepository.flush();
         cases.deleteAll();
         exceptionEvidence.deleteAll();
         exceptions.deleteAll();
@@ -194,6 +206,95 @@ class ComplianceDecisionIntegrationTests {
                 .isInstanceOf(ApiConflictException.class)
                 .extracting(error -> ((ApiConflictException) error).getCode())
                 .isEqualTo("VERSION_CONFLICT");
+    }
+
+    @Test
+    void recordsAndAmendsClientObservationWithoutOverwritingHistory() throws Exception {
+        Scenario scenario = scenario(true, false);
+        var initial = decisions.decide(scenario.execution().getId(), compliantCommand(scenario, 0L), supervisor);
+        var created = clientObservations.create(initial.caseId(),
+                new ClientObservationService.CreateObservationCommand(
+                        "Client reported a quality issue", ClientObservationOrigin.PHONE,
+                        LocalDate.of(2031, 3, 4)), supervisor);
+
+        var amended = clientObservations.amend(created.id(),
+                new ClientObservationService.AmendmentCommand(1,
+                        "Client confirmed the quality issue", ClientObservationOrigin.EMAIL,
+                        LocalDate.of(2031, 3, 3), "Corrected origin and wording"), supervisor);
+
+        assertThat(amended.revision()).isEqualTo(2);
+        assertThat(amended.supersedesObservationId()).isEqualTo(created.id());
+        assertThat(clientObservations.list(initial.caseId(), supervisor)).hasSize(2);
+        assertThat(clientObservationRepository.findById(created.id()).orElseThrow().getDescription())
+                .isEqualTo("Client reported a quality issue");
+
+        assertThatThrownBy(() -> clientObservations.amend(created.id(),
+                new ClientObservationService.AmendmentCommand(1, "Stale", ClientObservationOrigin.OTHER,
+                        LocalDate.of(2031, 3, 4), "Stale amendment"), supervisor))
+                .isInstanceOf(ApiConflictException.class)
+                .extracting(error -> ((ApiConflictException) error).getCode())
+                .isEqualTo("OBSERVATION_NOT_LATEST");
+
+        mvc.perform(get("/api/v1/compliance-cases/{id}/observations", initial.caseId())
+                        .header("Authorization", "Bearer " + jwt.createToken(supervisor)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].revision").value(1))
+                .andExpect(jsonPath("$[1].revision").value(2));
+    }
+
+    @Test
+    void reevaluatesOnceFromObservationAndPreservesOriginalResult() {
+        Scenario scenario = scenario(true, false);
+        var initial = decisions.decide(scenario.execution().getId(), compliantCommand(scenario, 0L), supervisor);
+        var observation = clientObservations.create(initial.caseId(),
+                new ClientObservationService.CreateObservationCommand(
+                        "Client rejected the delivered service", ClientObservationOrigin.SITE_VISIT,
+                        LocalDate.of(2031, 3, 4)), supervisor);
+        var command = new ComplianceDecisionService.ObservationReevaluationCommand(
+                ComplianceOutcome.NON_COMPLIANT, scenario.reviewVersion(), 1L,
+                List.of(new ComplianceDecisionService.CriterionDecision(
+                        "SERVICE_QUALITY", CriterionStatus.FAIL, "Client feedback confirmed failure")),
+                List.of(), "Client feedback changes the compliance conclusion");
+
+        var reevaluated = clientObservations.reevaluate(observation.id(), command, supervisor);
+
+        assertThat(reevaluated.caseVersion()).isEqualTo(2);
+        assertThat(reevaluated.sourceObservationId()).isEqualTo(observation.id());
+        assertThat(reevaluated.reevaluationReason())
+                .isEqualTo("Client observation #" + observation.id()
+                        + ": Client rejected the delivered service");
+        assertThat(results.findById(initial.resultId()).orElseThrow().getOutcome())
+                .isEqualTo(ComplianceOutcome.COMPLIANT);
+
+        var replay = new ComplianceDecisionService.ObservationReevaluationCommand(
+                command.outcome(), command.reviewVersion(), 2L, command.criteria(),
+                command.findings(), command.explanation());
+        assertThatThrownBy(() -> clientObservations.reevaluate(observation.id(), replay, supervisor))
+                .isInstanceOf(ApiConflictException.class)
+                .extracting(error -> ((ApiConflictException) error).getCode())
+                .isEqualTo("OBSERVATION_ALREADY_EVALUATED");
+    }
+
+    @Test
+    void rejectsFutureObservationWrongRoleAndOtherSiteScope() {
+        Scenario scenario = scenario(true, false);
+        var initial = decisions.decide(scenario.execution().getId(), compliantCommand(scenario, 0L), supervisor);
+        var future = new ClientObservationService.CreateObservationCommand(
+                "Future report", ClientObservationOrigin.OTHER, LocalDate.of(2031, 3, 5));
+
+        assertThatThrownBy(() -> clientObservations.create(initial.caseId(), future, supervisor))
+                .isInstanceOf(FieldValidationException.class);
+        assertThatThrownBy(() -> clientObservations.create(initial.caseId(),
+                new ClientObservationService.CreateObservationCommand(
+                        "Unauthorized", ClientObservationOrigin.OTHER, LocalDate.of(2031, 3, 4)), operator))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+        if (!sites.existsById(2L)) sites.saveAndFlush(new SiteScope(2L, 1L, "Other site"));
+        User otherSite = user("Other site supervisor", Role.SUPERVISOR, 1L, 2L);
+        assertThatThrownBy(() -> clientObservations.create(initial.caseId(),
+                new ClientObservationService.CreateObservationCommand(
+                        "Out of scope", ClientObservationOrigin.EMAIL, LocalDate.of(2031, 3, 4)), otherSite))
+                .isInstanceOf(com.api.servicecompliance.shared.domain.ResourceNotFoundException.class);
     }
 
     @Test

@@ -45,6 +45,7 @@ public class ComplianceResult {
     private String explanation;
     @Column(length = 2000)
     private String reevaluationReason;
+    private Long sourceObservationId;
     @Column(nullable = false)
     private Long decidedBy;
     @Column(nullable = false)
@@ -64,7 +65,7 @@ public class ComplianceResult {
                             Long predecessorResultId, ComplianceOutcome outcome, String sourceReviewVersion,
                             long sourceExecutionVersion, Long sourcePlanId, Integer sourcePlanVersion,
                             Long sourceDefinitionId, Long sourceDefinitionVersion, String explanation,
-                            String reevaluationReason, Long decidedBy, Instant decidedAt,
+                            String reevaluationReason, Long sourceObservationId, Long decidedBy, Instant decidedAt,
                             List<ComplianceCriterion> criteria, List<ComplianceFinding> findings) {
         this.complianceCaseId = complianceCaseId;
         this.executionId = executionId;
@@ -79,6 +80,7 @@ public class ComplianceResult {
         this.sourceDefinitionVersion = sourceDefinitionVersion;
         this.explanation = explanation;
         this.reevaluationReason = reevaluationReason;
+        this.sourceObservationId = sourceObservationId;
         this.decidedBy = decidedBy;
         this.decidedAt = decidedAt;
         this.criteria.addAll(criteria);
@@ -99,6 +101,7 @@ public class ComplianceResult {
     public Long getSourceDefinitionVersion() { return sourceDefinitionVersion; }
     public String getExplanation() { return explanation; }
     public String getReevaluationReason() { return reevaluationReason; }
+    public Long getSourceObservationId() { return sourceObservationId; }
     public Long getDecidedBy() { return decidedBy; }
     public Instant getDecidedAt() { return decidedAt; }
     public List<ComplianceCriterion> getCriteria() { return List.copyOf(criteria); }

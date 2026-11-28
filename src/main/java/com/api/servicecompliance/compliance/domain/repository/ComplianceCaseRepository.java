@@ -12,6 +12,8 @@ import java.util.Optional;
 public interface ComplianceCaseRepository extends JpaRepository<ComplianceCase, Long> {
     Optional<ComplianceCase> findByObligationId(Long obligationId);
 
+    Optional<ComplianceCase> findByIdAndCompanyIdAndSiteId(Long id, Long companyId, Long siteId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select complianceCase from ComplianceCase complianceCase where complianceCase.id = :id "
             + "and complianceCase.companyId = :companyId and complianceCase.siteId = :siteId")

@@ -6,6 +6,7 @@ import com.api.servicecompliance.compliance.domain.model.ComplianceCriterion;
 import com.api.servicecompliance.compliance.domain.model.ComplianceFinding;
 import com.api.servicecompliance.compliance.domain.model.ComplianceOutcome;
 import com.api.servicecompliance.compliance.domain.model.ComplianceResult;
+import com.api.servicecompliance.compliance.domain.model.ClientObservation;
 import com.api.servicecompliance.compliance.domain.model.CriterionStatus;
 import com.api.servicecompliance.compliance.domain.model.ExceptionDisposition;
 import com.api.servicecompliance.compliance.domain.repository.ComplianceCaseRepository;
@@ -57,6 +58,28 @@ public class ComplianceDecisionService {
 
     @Transactional
     public ComplianceResultResponse decide(Long executionId, DecisionCommand command, User reviewer) {
+        return decide(executionId, command, reviewer, null, null, null);
+    }
+
+    @Transactional
+    public ComplianceResultResponse reevaluate(ClientObservation observation,
+                                               ObservationReevaluationCommand command,
+                                               User reviewer) {
+        ComplianceResult current = results
+                .findFirstByComplianceCaseIdOrderByDecisionVersionDesc(observation.getComplianceCaseId())
+                .orElseThrow(() -> new ApiConflictException("INITIAL_DECISION_REQUIRED",
+                        "El caso requiere una decisión previa antes de reevaluarse"));
+        String reason = observationReason(observation);
+        DecisionCommand decision = new DecisionCommand(command.outcome(), command.reviewVersion(),
+                command.expectedCaseVersion(), command.criteria(), command.findings(),
+                command.explanation(), reason);
+        return decide(current.getExecutionId(), decision, reviewer, observation.getId(),
+                observation.getComplianceCaseId(), reason);
+    }
+
+    private ComplianceResultResponse decide(Long executionId, DecisionCommand command, User reviewer,
+                                            Long sourceObservationId, Long expectedCaseId,
+                                            String forcedReason) {
         Long obligationId = executions.findObligationId(executionId)
                 .orElseThrow(ComplianceDecisionService::notFound);
         Obligation obligation = obligations.lockInScope(
@@ -74,12 +97,22 @@ public class ComplianceDecisionService {
         ComplianceCase complianceCase = cases.findByObligationId(obligation.getId())
                 .orElseGet(() -> cases.saveAndFlush(new ComplianceCase(obligation.getId(),
                         obligation.getCompanyId(), obligation.getSiteId(), reviewer.getId(), now)));
+        if (expectedCaseId != null && !expectedCaseId.equals(complianceCase.getId())) {
+            throw notFound();
+        }
         verifyExpectedVersion(command.expectedCaseVersion(), complianceCase.getDecisionVersion());
+
+        if (sourceObservationId != null && results.existsBySourceObservationId(sourceObservationId)) {
+            throw new ApiConflictException("OBSERVATION_ALREADY_EVALUATED",
+                    "Esta revisión de la observación ya produjo un resultado de cumplimiento",
+                    complianceCase.getDecisionVersion());
+        }
 
         ComplianceResult predecessor = results
                 .findFirstByComplianceCaseIdOrderByDecisionVersionDesc(complianceCase.getId())
                 .orElse(null);
-        verifyReevaluation(command.reevaluationReason(), complianceCase.getDecisionVersion(), predecessor);
+        String reevaluationReason = forcedReason == null ? command.reevaluationReason() : forcedReason;
+        verifyReevaluation(reevaluationReason, complianceCase.getDecisionVersion(), predecessor);
 
         long decisionVersion = complianceCase.appendDecision(now);
         cases.saveAndFlush(complianceCase);
@@ -89,7 +122,8 @@ public class ComplianceDecisionService {
                 review.execution().version(), review.obligation().sourcePlanId(),
                 review.obligation().sourcePlanVersion(), review.obligation().sourceDefinitionId(),
                 review.obligation().sourceDefinitionVersion(), command.explanation().trim(),
-                decisionVersion == 1 ? null : command.reevaluationReason().trim(), reviewer.getId(), now,
+                decisionVersion == 1 ? null : reevaluationReason.trim(), sourceObservationId,
+                reviewer.getId(), now,
                 criteria(command.criteria()), findings(command.findings())));
         return response(complianceCase, result);
     }
@@ -204,7 +238,14 @@ public class ComplianceDecisionService {
                 result.getPredecessorResultId(), result.getOutcome(), result.getSourceReviewVersion(),
                 result.getSourceExecutionVersion(), result.getSourcePlanId(), result.getSourcePlanVersion(),
                 result.getSourceDefinitionId(), result.getSourceDefinitionVersion(), result.getExplanation(),
-                result.getReevaluationReason(), result.getDecidedBy(), result.getDecidedAt(), criteria, findings);
+                result.getReevaluationReason(), result.getSourceObservationId(), result.getDecidedBy(),
+                result.getDecidedAt(), criteria, findings);
+    }
+
+    private static String observationReason(ClientObservation observation) {
+        String prefix = "Client observation #" + observation.getId() + ": ";
+        String description = observation.getDescription().trim();
+        return prefix + description.substring(0, Math.min(description.length(), 2000 - prefix.length()));
     }
 
     private static String trimToNull(String value) {
@@ -240,12 +281,20 @@ public class ComplianceDecisionService {
             Long exceptionId,
             ExceptionDisposition exceptionDisposition) {}
 
+    public record ObservationReevaluationCommand(
+            @NotNull ComplianceOutcome outcome,
+            @NotBlank @Size(max = 100) String reviewVersion,
+            @NotNull @PositiveOrZero Long expectedCaseVersion,
+            @NotEmpty @Size(max = 100) List<@Valid CriterionDecision> criteria,
+            @NotNull @Size(max = 100) List<@Valid FindingDecision> findings,
+            @NotBlank @Size(max = 4000) String explanation) {}
+
     public record ComplianceResultResponse(
             Long caseId, Long obligationId, Long resultId, Long executionId, long caseVersion,
             Long predecessorResultId, ComplianceOutcome outcome, String sourceReviewVersion,
             long sourceExecutionVersion, Long sourcePlanId, Integer sourcePlanVersion,
             Long sourceDefinitionId, Long sourceDefinitionVersion, String explanation,
-            String reevaluationReason, Long decidedBy, Instant decidedAt,
+            String reevaluationReason, Long sourceObservationId, Long decidedBy, Instant decidedAt,
             List<CriterionResponse> criteria, List<FindingResponse> findings) {}
 
     public record CriterionResponse(String code, CriterionStatus status, String notes) {}
