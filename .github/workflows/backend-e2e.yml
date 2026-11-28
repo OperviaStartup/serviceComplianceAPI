@@ -96,6 +96,8 @@ jobs:
             test-class: com.api.servicecompliance.ComplianceDecisionIntegrationTests
           - flow: corrective-actions
             test-class: com.api.servicecompliance.CorrectiveActionIntegrationTests
+          - flow: corrective-attention
+            test-class: com.api.servicecompliance.CorrectiveAttentionIntegrationTests
     services:
       postgres:
         image: postgres:16-alpine

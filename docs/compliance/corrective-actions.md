@@ -36,9 +36,48 @@ Authorization: Bearer <access-token>
 The response includes persisted state, derived status, optimistic version, audit data, and ordered
 immutable lifecycle events. An operator cannot read an action assigned to someone else.
 
-## Lifecycle boundary
+## Operator attention flow
 
-The domain supports `ASSIGNED -> ATTENTION_SUBMITTED`, supervisor return to `RETURNED`, resubmission,
-and supervisor verification to terminal `CLOSED`. Each command checks an expected version. The
-public submit, return, verification, and corrective-evidence endpoints belong to BE-US-21; BE-US-12
-does not expose that unfinished contract.
+The assigned operator submits details and one to five JPEG/PNG photographs atomically. The
+`command` JSON part contains `expectedVersion`, `details`, and one `capturedAt` value per file.
+
+```http
+POST /api/v1/corrective-actions/{actionId}/attention-submissions
+Authorization: Bearer <operator-access-token>
+Idempotency-Key: attention-0001
+Content-Type: multipart/form-data
+
+command = {
+  "expectedVersion": 0,
+  "details": "The damaged seal was replaced",
+  "capturedAt": ["2031-03-05T15:00:00Z"]
+}
+files = <proof.png>
+```
+
+The first successful request returns `201`; an exact replay during the seven-day retention returns
+`200` with the original submission. A changed payload with the same key returns
+`IDEMPOTENCY_KEY_MISMATCH`. The evidence is private, immutable, and never stored as Execution
+Evidence.
+
+The assigned operator or scoped supervisor can list immutable attempts with:
+
+```http
+GET /api/v1/corrective-actions/{actionId}/attention-submissions
+```
+
+Each evidence response contains its authorized `contentPath`. The supervisor returns or verifies
+the current attention using a mandatory reason and expected version:
+
+```http
+POST /api/v1/corrective-actions/{actionId}/return
+POST /api/v1/corrective-actions/{actionId}/verify
+```
+
+Return moves the action to `RETURNED`; a resubmission creates the next numbered immutable attempt.
+Verification moves it to terminal `CLOSED`. Neither operation changes the Compliance Result.
+
+## Lifecycle ownership
+
+BE-US-12 owns the action and transition rules. BE-US-21 owns attention submissions, corrective
+evidence, idempotent replay, return, and verification HTTP commands.

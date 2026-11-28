@@ -21,6 +21,12 @@ class LocalPhotoStorageTests {
         storage.delete(key);
         assertThrows(PhotoStorageUnavailableException.class, () -> storage.get(key));
     }
+    @Test void correctiveEvidenceUsesTheSamePrivateAdapter() {
+        var storage = new LocalPhotoStorage(directory.toString());
+        String correctiveKey = "company/1/site/1/corrective-action/9/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png";
+        storage.put(correctiveKey, new byte[]{1, 2, 3}, "image/png");
+        assertArrayEquals(new byte[]{1, 2, 3}, storage.get(correctiveKey));
+    }
     @Test void anExistingObjectCannotBeReplaced() {
         var storage = new LocalPhotoStorage(directory.toString());
         storage.put(key, new byte[]{1}, "image/jpeg");
