@@ -91,7 +91,6 @@ public class CorrectiveActionService {
         return response(action, clock.instant());
     }
 
-    /** Internal state-machine capability consumed by BE-US-21 when its HTTP/evidence contract is added. */
     @Transactional
     public CorrectiveActionResponse submitAttention(Long actionId, @Valid TransitionCommand command,
                                                     User operator) {
@@ -107,7 +106,6 @@ public class CorrectiveActionService {
         return response(actions.saveAndFlush(action), clock.instant());
     }
 
-    /** Internal state-machine capability consumed by BE-US-21 when its HTTP/evidence contract is added. */
     @Transactional
     public CorrectiveActionResponse returnForCorrection(Long actionId, @Valid TransitionCommand command,
                                                         User supervisor) {
@@ -119,7 +117,6 @@ public class CorrectiveActionService {
         return response(actions.saveAndFlush(action), clock.instant());
     }
 
-    /** Internal state-machine capability consumed by BE-US-21 when its HTTP/evidence contract is added. */
     @Transactional
     public CorrectiveActionResponse verifyAndClose(Long actionId, @Valid TransitionCommand command,
                                                    User supervisor) {
@@ -182,7 +179,7 @@ public class CorrectiveActionService {
         return new ResourceNotFoundException("Acción correctiva no encontrada");
     }
 
-    private static CorrectiveActionResponse response(CorrectiveAction action, Instant now) {
+    static CorrectiveActionResponse response(CorrectiveAction action, Instant now) {
         List<CorrectiveActionEventResponse> events = action.getEvents().stream()
                 .map(CorrectiveActionService::eventResponse).toList();
         return new CorrectiveActionResponse(action.getId(), action.getComplianceCaseId(),

@@ -69,7 +69,8 @@ public class LocalPhotoStorage implements PhotoStorage {
     }
 
     private Path resolve(String key) {
-        if (key == null || !key.matches("company/[0-9]+/site/[0-9]+/execution/[0-9]+/requirement/[0-9]+/[a-fA-F0-9-]{36}\\.(jpg|png)"))
+        if (key == null || !(key.matches("company/[0-9]+/site/[0-9]+/execution/[0-9]+/requirement/[0-9]+/[a-fA-F0-9-]{36}\\.(jpg|png)")
+                || key.matches("company/[0-9]+/site/[0-9]+/corrective-action/[0-9]+/[a-fA-F0-9-]{36}\\.(jpg|png)")))
             throw new PhotoStorageUnavailableException();
         Path target = root.resolve(key).normalize();
         if (!target.startsWith(root)) throw new PhotoStorageUnavailableException();

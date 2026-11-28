@@ -11,10 +11,11 @@ Status: **PARTIALLY APPROVED**. Decisions 1–5 were approved for `BE-US-17` and
 Decisions 6 and 8 were approved for `BE-US-01`; the definition-only portions of decisions 7 and 10
 were approved for `BE-US-02` on 2026-11-05. The BE-US-05 portions of decisions 8 and 9 were
 approved on 2026-11-15. Decision 10 was fully approved for `BE-US-06` on 2026-11-16. Unapproved
-portions of decisions 7, 9, and 14–18 remain draft. The `BE-US-07` exception refinement of
+portions of decisions 7, 9, and 16–18 remain draft. The `BE-US-07` exception refinement of
 decisions 8–10 was approved on 2026-11-17, and decision 11 was approved for `BE-US-08` on
 2026-11-21. Decision 12 was approved for `BE-US-09` on 2026-11-22, and decision 13 was approved
-for `BE-US-10` on 2026-11-23. Decision 14 was approved for `BE-US-11` on 2026-11-23. Preserve
+for `BE-US-10` on 2026-11-23. Decision 14 was approved for `BE-US-11` on 2026-11-23. Decision 15
+was approved for `BE-US-12` and refined for `BE-US-21` on 2026-11-27. Preserve
 `/api/v1` compatibility or document a consumer migration path.
 
 ## Proposed defaults for review
@@ -201,6 +202,17 @@ The remaining schedule syntax, content allowlist, report performance target, and
     00:00 the following day only while `ASSIGNED` or `RETURNED`. Later reevaluations never mutate
     existing actions. `BE-US-12` owns creation, query, aggregate and history; `BE-US-21` owns the
     public submit/return/verify endpoints and corrective evidence. Affected: `BE-US-12`, `21`.
+
+    Approved `BE-US-21` refinement: the assigned operator submits one atomic multipart attention
+    containing normalized details, expected action version, and one to five JPEG/PNG photographs.
+    Each submission and its private evidence are immutable and separate from Execution Evidence;
+    a return followed by resubmission appends another numbered submission. `Idempotency-Key` uses
+    the approved seven-day company/actor/command scope, excludes expected version from semantic
+    content, and replays the original submission without duplicate objects or transitions.
+    Changed content returns `IDEMPOTENCY_KEY_MISMATCH`. A scoped supervisor returns or verifies
+    with a mandatory reason and expected version. Only the current assignee or a scoped supervisor
+    may list submissions or download evidence. Direct endpoint replay supports offline recovery;
+    the BE-US-08 batch contract is unchanged.
 16. **Timeline.** Define event ownership, type/payload evolution, stable ID, cursor, and equal-timestamp tie-breaker. Affected: `BE-US-14`.
 17. **Alerts.** Define recipient resolution, channels, rule configuration, occurrence identity, deduplication, delivery retry, and escalation. Affected: `BE-US-16`, `23`.
 18. **Reports.** Define export format, cutoff/timezone, consistent snapshot, asynchronous job retention, download authorization, size limit, and performance target. Affected: `BE-US-15`.
